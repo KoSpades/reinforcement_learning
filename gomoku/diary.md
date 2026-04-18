@@ -78,6 +78,16 @@ It will throw an error, because PyTorch operations require all tensors to be on 
 
 4. It seems like the general practice with Torch is to send anything "number_like" to GPU, we will remember this going forward.
 
+5. Some basic syntax:
+- torch.ones(): returns a tensor of 1's with specified shape
+- torch.stack([t1, t2, ...]): stack a bunch of tensors with the same shape together
+- torch.eye(#): return an identity matrix tensor with specified shape # by # (2D by default)
+- tensor.view(some shape): alter the shape of a tensor without changing its values (e.g. can view a 2D tensor as a 4D one)
+- torch.fliplr(): flips a 2D tensor left-to-right
+- F.conv2D(t1, t2): returns a tensor of convolution scores
+- F.conv2D(t1, t2) >= target: return a Boolean tensor 
+- (F.conv2d(player_board, ker) >= 5).any(): return a single boolean tensor. if the previous function finds at least one True
+
 ### Checking for win conditions
 
 Here is how we can check for win-conditions, using torch and 2D convolusion:
@@ -87,3 +97,5 @@ Here is how we can check for win-conditions, using torch and 2D convolusion:
 A quick note: F.conv2D expects 4D tensors as inputs. Some implications:
 - so 5-in-a-row is represented as torch.ones((1, 1, 1, 5), device=device)
 - player_board = state_tensor[:, whose_turn:whose_turn+1, :, :]: keeps a 4D slice of the player board, for either black or white
+
+Note: going forward, remember to have state on mps too.
