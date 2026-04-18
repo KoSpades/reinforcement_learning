@@ -56,11 +56,11 @@ We will code the following for the environment:
 I can do a for-loop for checking for win-conditions, but that will likely be slow for later operations. So I looked up good practices here.
 Based on my research, it's better to use PyTorch for these workloads.
 
-### What is 2D convolution?
+### Let's use 2D convolution
 
 2D convolution is a process where a small grid (the kernel) with user-defined shape slides over a larger grid (the board), and calculates a dot product at every position. 
 
-In gomoku: checking if any resulting dot product matches your target number (5) helps checking winning conditions.
+In gomoku: checking if any resulting dot product matches our target (5) helps checking winning conditions.
 
 ### Some Pytorch basics:
 
@@ -96,6 +96,5 @@ Here is how we can check for win-conditions, using torch and 2D convolusion:
 
 A quick note: F.conv2D expects 4D tensors as inputs. Some implications:
 - so 5-in-a-row is represented as torch.ones((1, 1, 1, 5), device=device)
-- player_board = state_tensor[:, whose_turn:whose_turn+1, :, :]: keeps a 4D slice of the player board, for either black or white
 
 Note: going forward, remember to have state on mps too.
