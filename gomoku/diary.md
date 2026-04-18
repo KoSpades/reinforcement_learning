@@ -98,3 +98,7 @@ A quick note: F.conv2D expects 4D tensors as inputs. Some implications:
 - so 5-in-a-row is represented as torch.ones((1, 1, 1, 5), device=device)
 
 Note: going forward, remember to have state on mps too.
+
+## 04/17/26
+
+Let's get a game going to see it in action, have some pretty print. Then we will move onto some RL stuff.
