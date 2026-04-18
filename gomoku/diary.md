@@ -2,7 +2,7 @@
 
 ## Learning Objective
 - We want to get out from this project: some real coding experience with a project beyond the toy example (Easy21).
-- Some more familarity with Deep RL (which we didn't get in Easy21, since we just used tabular lookups and linear function approximators).
+- Some more familarity with Deep RL (which we didn't get in Easy21, where we just used tabular lookups and linear function approximators).
 
 We have previous attemped Easy21. But it has a small state space (200 total states) and action space (2 actions). And it worked very well. (just did tabular look ups; the value function approximation also has very small # of features: 36).
 
@@ -82,7 +82,8 @@ It will throw an error, because PyTorch operations require all tensors to be on 
 - tensor.view(some shape): alter the shape of a tensor without changing its values (e.g. can view a 2D tensor as a 4D one)
 - tensor.sum(dim): sum a tensor along the given dimension
 - tensor.flatten(): flattens any tensor into a 1D tensor
-- t1 = t2 condition, where condition is an elementwise comparison: returns a tensor of the same shape with Boolean values (i.e., a Boolean mask)
+- tensor.clone(): creates a deep copy of a tensor
+- t1 = (t2 condition), where condition is an elementwise comparison: returns a tensor of the same shape with Boolean values (i.e., a Boolean mask)
 
 6. Some torch functions:
 - torch.ones(): returns a tensor of 1's with specified shape
@@ -102,13 +103,24 @@ Here is how we can check for win-conditions, using torch and 2D convolusion:
 A quick note: F.conv2D expects 4D tensors as inputs. Some implications:
 - so 5-in-a-row is represented as torch.ones((1, 1, 1, 5), device=device)
 
-Note: going forward, remember to have state on mps too.
-
 ### Get a legal move
 
 My thought is to go through the board, find all empty spaces, then randomly pick one.
 I looked up the Pytorch way on how to do it, and will use that in the code.
 
-## 04/17/26
+Note: going forward, remember to have state on mps too.
+
+## 04/18/26
 
 Let's get a game going to see it in action, have some pretty print. Then we will move onto some RL stuff.
+
+### Roll out a game with random actions.
+
+This is easy. We solved it with a simple while loop.
+
+### Pretty print.
+
+This seems less important. We generated this part with LLM.
+
+Looks like we have the environment finished, let's read AlphaZero now.
+

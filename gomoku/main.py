@@ -41,7 +41,7 @@ def check_win_cond(state, whose_turn):
     Output:
         0 if black wins, 1 if white. -1 o/w
     """ 
-    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+    device = state.device
     # Set up the shape checks: We need four shapes: horizontal, diagonal, and two diagonal
     kernels = [
         torch.ones((1, 1, 1, 5), device=device),
@@ -61,7 +61,7 @@ def step(state, action, whose_turn):
     """
     INPUT: 
         state: 
-            a (2*BOARD_SIZE*BOARD_SIZE) representing pieces on the board.
+            a (2*BOARD_SIZE*BOARD_SIZE) tensor representing pieces on the board.
             First dimension corresponds to the black pieces: 1 if occupied, 0 o/w.
             Second dimension corresponds to the white pieces.
         action:
@@ -76,19 +76,54 @@ def step(state, action, whose_turn):
     if move_is_legal(state, action):
         row_idx = action // BOARD_SIZE
         col_idx = action % BOARD_SIZE
-        state[whose_turn][row_idx][col_idx] = 1
-        return state
+        next_state = state.clone()
+        next_state[whose_turn][row_idx][col_idx] = 1
+        return next_state
     else:
         raise ValueError(f"Illegal move at action {action}")
     
 
+def pretty_print_state(state):
+    """
+    Pretty-print a Gomoku board.
+
+    state shape:
+        (2, BOARD_SIZE, BOARD_SIZE)
+
+    state[0] = black stones
+    state[1] = white stones
+    """
+    symbols = {
+        0: ".",
+        1: "B",
+        2: "W",
+    }
+
+    occupied = state[0] + 2 * state[1]
+
+    print("   " + " ".join(str(i) for i in range(BOARD_SIZE)))
+
+    for row_idx in range(BOARD_SIZE):
+        row_symbols = []
+        for col_idx in range(BOARD_SIZE):
+            cell = int(occupied[row_idx][col_idx].item())
+            row_symbols.append(symbols[cell])
+
+        print(f"{row_idx:2} " + " ".join(row_symbols))
+    
+
 if __name__ == "__main__":
-    # check_win_cond()
     print("Game start")
-    # device = device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
-    # test_board = torch.ones((2, 9, 9), device=device)
-    # test_board[0, 0, 0] = 0
-    # test_board[1, 0, 0] = 0
-    # test_board[0, 1, 0] = 0
-    # test_board[1, 1, 0] = 0
-    # print(get_random_legal_move(test_board))
+    device = device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+    cur_state = torch.zeros((2, BOARD_SIZE, BOARD_SIZE), device=device)
+    cur_turn = 0
+    while True:
+        cur_action = get_random_legal_move(cur_state)
+        next_state = step(cur_state, cur_action, cur_turn)
+        cur_state = next_state
+        if (check_win_cond(cur_state, cur_turn) < 0):
+            cur_turn = 1 - cur_turn # Note: have to do integer indexing here over Boolean indexing
+        else:
+            break
+    print("Game has ended.")
+    pretty_print_state(cur_state)
