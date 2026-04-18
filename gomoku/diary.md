@@ -78,11 +78,16 @@ It will throw an error, because PyTorch operations require all tensors to be on 
 
 4. It seems like the general practice with Torch is to send anything "number_like" to GPU, we will remember this going forward.
 
-5. Some basic syntax:
+5. Some tensor operations:
+- tensor.view(some shape): alter the shape of a tensor without changing its values (e.g. can view a 2D tensor as a 4D one)
+- tensor.sum(dim): sum a tensor along the given dimension
+- tensor.flatten(): flattens any tensor into a 1D tensor
+- t1 = t2 condition, where condition is an elementwise comparison: returns a tensor of the same shape with Boolean values (i.e., a Boolean mask)
+
+6. Some torch functions:
 - torch.ones(): returns a tensor of 1's with specified shape
 - torch.stack([t1, t2, ...]): stack a bunch of tensors with the same shape together
 - torch.eye(#): return an identity matrix tensor with specified shape # by # (2D by default)
-- tensor.view(some shape): alter the shape of a tensor without changing its values (e.g. can view a 2D tensor as a 4D one)
 - torch.fliplr(): flips a 2D tensor left-to-right
 - F.conv2D(t1, t2): returns a tensor of convolution scores
 - F.conv2D(t1, t2) >= target: return a Boolean tensor 
@@ -98,6 +103,11 @@ A quick note: F.conv2D expects 4D tensors as inputs. Some implications:
 - so 5-in-a-row is represented as torch.ones((1, 1, 1, 5), device=device)
 
 Note: going forward, remember to have state on mps too.
+
+### Get a legal move
+
+My thought is to go through the board, find all empty spaces, then randomly pick one.
+I looked up the Pytorch way on how to do it, and will use that in the code.
 
 ## 04/17/26
 

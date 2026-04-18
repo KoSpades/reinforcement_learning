@@ -18,6 +18,21 @@ def move_is_legal(state, action):
     return False
 
 
+def get_random_legal_move(state):
+    """
+    Output an integer for the position of a valid move.
+    """
+    # First, combine the black and white place
+    occupied = state.sum(dim=0)
+    # Then, construct a boolean mask for legal positions and flatten it
+    legal_mask = (occupied == 0)
+    legal_flat = legal_mask.flatten()
+    # Then, get the legal move indices and flatten it
+    legal_actions = legal_flat.nonzero().flatten()
+    # Finally, pick a random idx and get its value
+    legal_idx = torch.randint(len(legal_actions), ())
+    return legal_actions[legal_idx]
+
 def check_win_cond(state, whose_turn):
     """
     Input:
@@ -70,3 +85,10 @@ def step(state, action, whose_turn):
 if __name__ == "__main__":
     # check_win_cond()
     print("Game start")
+    # device = device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+    # test_board = torch.ones((2, 9, 9), device=device)
+    # test_board[0, 0, 0] = 0
+    # test_board[1, 0, 0] = 0
+    # test_board[0, 1, 0] = 0
+    # test_board[1, 1, 0] = 0
+    # print(get_random_legal_move(test_board))
