@@ -1,3 +1,5 @@
+import torch
+
 def move_is_legal(state, action):
     """
     Checking whether a move is legal. Output True if yes.
