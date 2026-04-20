@@ -154,10 +154,20 @@ Fistly, why the loss function $-log(\pi(a | s, w)) * G$:
 - Minimizing the loss function is equal to saying: if G is large and positive, we want to increase the likelihood of outputting action a. If G is negative, we want to decrease the likelihood of the action.
 - So this is exactly what we want our policy to do.
 
-Some nice things from the class:
+Thing to take away from class:
 1. The idea of using a NN is to think of the input as some tensors, the output as some tensors, and build this NN to optimize some loss function.
 - For example, for image classification, the input are the raw image pixels, the output can be a distribution of the categories (e.g. cats, dogs, etc.), and the loss function can be if we are right or not (we have the supervised labels.) That is, given image state, predict image class.
 - From this perspective, we see how this connects to Gomoku: the input is a tensor of the board state, the output is a distribution of the action, and, as discussed above, we optimize the loss function so we can increasingly take good actions. That is, given board state, predict good actions.
+2. We have seen linear layers with an activation. First, what are the "meaning" of linear layers? Second, what are limitations with just linear layers?
+- Meaning: A linear layer is a dot product. So a high value means a high match between our data (x), and some kind of "template vector" (weight w).
+- Limitation: a full dot product completely ignores the spatial structure of the input data.
+3. What are convolution layers?
+- They are small 2D structures (i.e., the conv kernels) that sweeps through a 2D image and look for "template matches", which preverses some spatial structure.
+- Since they are also just dot products, a typical design to introduce non-linearity is Conv layer -> Activation -> Conv layer -> Activation, etc. etc.
+4. More generally, for NN architecture design:
+- There are a bunch of operators (like linear, conv, activation) that we can choose from. We want to construct a graph of these operators that makes sense for our task.
 
-### Question: What is g(log(pi(w, s, a))) in REINFORCE?
+This lecture gave us enough info on the intuition of Conv layers and why they may be suited for Gomoku (learning features about the board state), we will just do one more lecture on training CNNs and CNN architectures: https://www.youtube.com/watch?v=aVJy4O5TOk8.
+
+
 
