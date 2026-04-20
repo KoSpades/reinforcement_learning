@@ -124,3 +124,40 @@ This seems less important. We generated this part with LLM.
 
 Looks like we have the environment finished, let's read AlphaZero now.
 
+After some research, it looks like we should first try to understand the NN component from AlphaZero, then worry about MCTS later, so we will first study it.
+After some further research, we will probably do something like REINFORCE with a NN to start, then later transition into MCTS.
+
+## 04/19/26
+
+We reviewed policy gradient methods and what the REINFORCE algorithm is doing.
+
+### Roadmap Ahead
+
+1. First we do REINFORCE with some kind of NN policy network.
+2. Then actor-critic.
+3. Then we will do MCTS.
+
+Let's start with REINFORCE.
+
+### First piece of REINFORCE: Getting the policy network
+
+Concretely, a policy network works as follows:
+- Is parameterized by some w.
+- Take as input the state s.
+- Output a probs distribution over all actions.
+
+Our goal is to adjust w to select the good actions.
+
+We need to understand what kind of pieces go into our DNN. After some research, it looks like we should first study what a CNN is. We will watch a lecture on this: https://www.youtube.com/watch?v=f3g1zGdxptI.
+
+Fistly, why the loss function $-log(\pi(a | s, w)) * G$: 
+- Minimizing the loss function is equal to saying: if G is large and positive, we want to increase the likelihood of outputting action a. If G is negative, we want to decrease the likelihood of the action.
+- So this is exactly what we want our policy to do.
+
+Some nice things from the class:
+1. The idea of using a NN is to think of the input as some tensors, the output as some tensors, and build this NN to optimize some loss function.
+- For example, for image classification, the input are the raw image pixels, the output can be a distribution of the categories (e.g. cats, dogs, etc.), and the loss function can be if we are right or not (we have the supervised labels.) That is, given image state, predict image class.
+- From this perspective, we see how this connects to Gomoku: the input is a tensor of the board state, the output is a distribution of the action, and, as discussed above, we optimize the loss function so we can increasingly take good actions. That is, given board state, predict good actions.
+
+### Question: What is g(log(pi(w, s, a))) in REINFORCE?
+
