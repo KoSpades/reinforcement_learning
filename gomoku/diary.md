@@ -151,7 +151,7 @@ Our goal is to adjust w to select the good actions.
 We need to understand what kind of pieces go into our DNN. After some research, it looks like we should first study what a CNN is. We will watch a lecture on this: https://www.youtube.com/watch?v=f3g1zGdxptI.
 
 Fistly, why the loss function $-log(\pi(a | s, w)) * G$: 
-- Minimizing the loss function is equal to saying: if G is large and positive, we want to increase the likelihood of outputting action a. If G is negative, we want to decrease the likelihood of the action.
+- Minimizing this loss function is equal to saying: For this current (s,a) pair that we are visiting: if G is large and positive for this action a, we want to increase the likelihood of outputting this action. If G is negative, we want to decrease the likelihood of this action.
 - So this is exactly what we want our policy to do.
 
 Thing to take away from class:
@@ -167,7 +167,32 @@ Thing to take away from class:
 4. More generally, for NN architecture design:
 - There are a bunch of operators (like linear, conv, activation) that we can choose from. We want to construct a graph of these operators that makes sense for our task.
 
-This lecture gave us enough info on the intuition of Conv layers and why they may be suited for Gomoku (learning features about the board state), we will just do one more lecture on training CNNs and CNN architectures: https://www.youtube.com/watch?v=aVJy4O5TOk8.
+This lecture gave us enough info on the intuition of Conv layers and why they may be suited for Gomoku (learning features about the board state).
+
+## 04/20/26
+
+We are doing one more lecture on training CNNs and CNN architectures: https://www.youtube.com/watch?v=aVJy4O5TOk8.
 
 
+### How to build CNN networks?
+1. Other operators to use: LayerNorm, Dropout
 
+2. Where to place activations in a NN?
+- Generally placed after linear layers (e.g. fully connected, CNNs)
+
+3. Some popular architectures:
+- some 3*3 Conv layers -> pool -> conv -> pool -> FC -> FC (with dim_out equal to the number of categories we have) -> Softmax over all categories
+- Resnet
+
+4. How to do weight initializations?
+- times it by sqrt(2/dim_in) magically works :D
+- why? to prevent the layer mean/std from becoming too large or too small
+
+### How to train CNN networks?
+1. Data preprocessing: What transformations do we apply to the data before passing it to the NN?
+
+Subtract per-channel mean and divide by per-channel standard deviation.
+
+This lecture is kinda vague, but the example architecture of CNN network is still helpful. Let's dive back into constructing our policy network.
+
+We will just do one more lecture on Deep RL's class on policy gradients, since that is exactly what we are working on: https://www.youtube.com/watch?v=KCAOXd4IO9o
