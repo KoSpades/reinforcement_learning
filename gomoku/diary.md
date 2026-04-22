@@ -205,6 +205,7 @@ I think we are ready to create the network and implement REINFORCE.
 - Write an NN.module
 - declare layers in init
 - define computation in forward
+- define the associated optimzer with a learning rate
 
 3. Have your dataset ready.
 
@@ -250,9 +251,24 @@ Yes. From the lens of self-play, we should then think of the policy network as p
 4. Some tensor operations:
 - t1.unsqueeze(0)/squeeze(0): adds/removes a dimension of size 1 at first position. Typical for adding a "fake batch" dimension for some F to work.
 - t1.masked_fill(t2, val): fill the entries where t2 is True with some value
+- if not t1.any(): checking if a tensor is all False
 
 5. Some torch functionalities:
 - dist = torch.distributions.Categorical(probs=my_probs): gives a probs distribution over a finite set of choices. We can later perform things like action = dist.sample(), and log_prob = dist.log_prob(action) from it.
 
 We are right before actually performing the weight updates using both the black trajectory and white trajectory with the rewards and action log probability, will complete this tomorrow.
 
+## 04/22/26
+
+Let's not get into hyperparameter tuning for now, so let's just use a fixed learning rate.
+
+### How do to weight updates in general in Torch?
+
+1. Define a scalar loss.
+2. Clear old gradients: optimizer.zero_grad()
+3. Back propagation with: loss.backward()
+4. Perform weight updates: optimizer.step()
+
+One thing I realized is that the current code has a bug for games that led to a draw, so we need to handle draw games properly.
+
+Fundamentally, since draw games led to zero reward, it will not have an impact on the training, so let's just skip them entirely. 

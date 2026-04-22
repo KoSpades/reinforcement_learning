@@ -155,6 +155,10 @@ def generate_episode_for_reinforce(start_state, policy):
         action_logits = policy(policy_state.unsqueeze(0)).squeeze(0)
         occupied_spaces = cur_state.sum(dim=0)
         legal_mask = (occupied_spaces == 0).flatten()
+        if not legal_mask.any():
+            episode_history = []
+            action_log_probs = []
+            break
         masked_logits = action_logits.masked_fill(~legal_mask, float("-inf"))
         action_probs = F.softmax(masked_logits, dim=-1) # Note: dim=-1 since there's a batch dimension in the front
         action_dist = torch.distributions.Categorical(probs=action_probs)
@@ -182,25 +186,38 @@ def generate_episode_for_reinforce(start_state, policy):
 def reinforce_algo(start_state, num_iter=1000):
     cur_iter = 0
     cur_policy = PolicyNetwork().to(start_state.device)
-    cur_turn = 0
+    optimizer = torch.optim.Adam(cur_policy.parameters(), lr=1e-3)
     while (cur_iter < num_iter):
         # generate a complete episode
         cur_episode, cur_actions_probs = generate_episode_for_reinforce(start_state, cur_policy)
         # pretty_print_state(cur_episode[-1][0])
-        # perform updates: first, split the trajectory into two episodes since we are doing self-play,
-        # then update for both episodes 
-        black_reward = cur_episode[-1][1]
-        white_reward = -black_reward
-        cur_episode = cur_episode[:-1]
-        black_episode = cur_episode[::2]
-        white_episode = cur_episode[1::2]
-        # FROM HERE
-        print(cur_actions_probs)
-        cur_iter += 1
+
+        # First, split the episode into two trajectories since we are doing self-play.
+        if len(cur_episode):
+            black_reward = cur_episode[-1][1]
+            white_reward = -black_reward
+            cur_episode = cur_episode[:-1]
+            # black_episode = cur_episode[::2]
+            # white_episode = cur_episode[1::2]
+            black_log_probs = cur_actions_probs[::2]
+            white_log_probs = cur_actions_probs[1::2]
+
+            # Weight updates for both trajectories
+            black_loss = -torch.stack(black_log_probs).sum() * black_reward
+            white_loss = -torch.stack(white_log_probs).sum() * white_reward
+            total_loss = black_loss + white_loss
+            optimizer.zero_grad()
+            total_loss.backward()
+            optimizer.step()
+
+            cur_iter += 1
+
+    return cur_policy
 
 
 if __name__ == "__main__":
     print("Game start")
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
     cur_state = torch.zeros((2, BOARD_SIZE, BOARD_SIZE), device=device)
-    reinforce_algo(cur_state, 1)
+    final_policy = reinforce_algo(cur_state, 100)
+    print(final_policy.state_dict())
