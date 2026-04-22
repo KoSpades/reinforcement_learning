@@ -139,21 +139,41 @@ class PolicyNetwork(nn.Module):
 
 def generate_episode_for_reinforce(start_state, policy):
     """
-    Return a complete episode, starting from start_state, following the input policy parameter.
+    Return a complete episode of (state, action) pairs, and the final reward (who won). 
+    Starting from start_state, following the input policy parameter.
     """
     episode_history = []
     cur_state = start_state
     cur_turn = 0
     while (True):
         # generate an action using the NN
-        action_logits = policy(cur_state.unsqueeze(0)).squeeze(0)
+        if cur_turn == 0:
+            policy_state = cur_state
+        else:
+            policy_state = torch.stack([cur_state[1], cur_state[0]])
+        action_logits = policy(policy_state.unsqueeze(0)).squeeze(0)
         occupied_spaces = cur_state.sum(dim=0)
         legal_mask = (occupied_spaces == 0).flatten()
         masked_logits = action_logits.masked_fill(~legal_mask, float("-inf"))
         action_probs = F.softmax(masked_logits, dim=-1) # Note: dim=-1 since there's a batch dimension in the front
         action_dist = torch.distributions.Categorical(probs=action_probs)
         cur_action = action_dist.sample()
-        ...
+        episode_history.append((cur_state, cur_action))
+        next_state = step(cur_state, cur_action, cur_turn)
+        # Checking for termination
+        res = check_win_cond(next_state, cur_turn)
+        # First case: not terminated yet
+        if res < 0:
+            cur_state = next_state
+            cur_turn = 1 - cur_turn
+        # Second case: reached termination
+        else:
+            if res == 0:
+                episode_history.append((next_state, 1))
+            else:
+                episode_history.append((next_state, -1))
+            break
+    return episode_history
     
 
 def reinforce_algo(start_state, num_iter=1000):
@@ -163,7 +183,11 @@ def reinforce_algo(start_state, num_iter=1000):
     while (cur_iter < num_iter):
         # generate a complete episode
         cur_episode = generate_episode_for_reinforce(start_state, cur_policy)
-        # perform updates
+        # pretty_print_state(cur_episode[-1][0])
+        # perform updates: first, split the trajectory into two episodes since we are doing self-play,
+        # then update for both episodes 
+        cur_reward = cur_episode[-1][1]
+        
         cur_iter += 1
 
 
