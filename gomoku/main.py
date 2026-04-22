@@ -1,4 +1,5 @@
 import torch
+from torch import nn
 import torch.nn.functional as F
 
 
@@ -32,6 +33,7 @@ def get_random_legal_move(state):
     # Finally, pick a random idx and get its value
     legal_idx = torch.randint(len(legal_actions), ())
     return legal_actions[legal_idx]
+
 
 def check_win_cond(state, whose_turn):
     """
@@ -110,6 +112,29 @@ def pretty_print_state(state):
             row_symbols.append(symbols[cell])
 
         print(f"{row_idx:2} " + " ".join(row_symbols))
+
+
+class PolicyNetwork(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.layers =nn.Sequential(
+            nn.Conv2d(in_channels=2, out_channels=64, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(),
+            nn.Flatten(),
+            nn.Linear(64*BOARD_SIZE*BOARD_SIZE, BOARD_SIZE*BOARD_SIZE)
+        )
+
+    def forward(self, x):
+        logits = self.layers(x)
+        return logits
     
 
 if __name__ == "__main__":

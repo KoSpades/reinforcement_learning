@@ -92,6 +92,7 @@ It will throw an error, because PyTorch operations require all tensors to be on 
 - torch.fliplr(): flips a 2D tensor left-to-right
 - F.conv2D(t1, t2): returns a tensor of convolution scores
 - F.conv2D(t1, t2) >= target: return a Boolean tensor 
+- F.relu(t1): return a tensor of same shape applying ReLu
 - (F.conv2d(player_board, ker) >= 5).any(): return a single boolean tensor. if the previous function finds at least one True
 
 ### Checking for win conditions
@@ -131,7 +132,7 @@ After some further research, we will probably do something like REINFORCE with a
 
 We reviewed policy gradient methods and what the REINFORCE algorithm is doing.
 
-### Roadmap Ahead
+## Roadmap Ahead
 
 1. First we do REINFORCE with some kind of NN policy network.
 2. Then actor-critic.
@@ -195,4 +196,55 @@ Subtract per-channel mean and divide by per-channel standard deviation.
 
 This lecture is kinda vague, but the example architecture of CNN network is still helpful. Let's dive back into constructing our policy network.
 
-We will just do one more lecture on Deep RL's class on policy gradients, since that is exactly what we are working on: https://www.youtube.com/watch?v=KCAOXd4IO9o
+I think we are ready to create the network and implement REINFORCE.
+
+### High-level TODO List for Implementing any NN
+1. Define the input/output tensor
+
+2. Define the model architecture 
+- Write an NN.module
+- declare layers in init
+- define computation in forward
+
+3. Have your dataset ready.
+
+4. Train
+- Feed in input.
+- Construct the loss.
+- Backpropagate and update.
+
+## 04/21/26
+
+### Some other NN details before we start with the architecture design
+
+1. Should we do pooling layers?
+- If we don't need exact spatial output, have a large input, and can afford to lose local details, then we can use pooling.
+- Gomoku does not follow any of these three rules: we want the precise board layout to place our stones; input board isn't that large, and don't want to lose any local details. So let's not use pooling at all.
+
+2. What's the benefit of doing padding 1 to conv 3*3 kernels?
+- Mostly just so that our board don't shrink too quickly, so we can keep stacking conv layers on top.
+
+3. General questions on how many filters in each conv layer and how many conv layers in total.
+- Sounds like 64 filters is the general practice, and for start we can do 5 conv layers.
+
+### Implementing the policy network
+
+Time to write some Torch :) We will do five layers of (Conv->Relu) followed by a FC with (64*9*9 -> 9*9).
+
+This is done! Let's do Reinforce then.
+
+## Implementing REINFORCE
+
+1. How is the per time-step action generated, in generating episodes?
+
+They are generated based on the policy NN. Here is the loop: 1) Observe current state. 2) Feed state to NN to get logits. 3) Do illegal move masking. 4) Turn logits into a probs distribution. 5) Sample a move.
+
+2. I just realized that I am not encoding turn information in the NN. Is it a problem? How do I fix?
+
+Yes, we shall encode turn information. Easy fix is to swap the planes during action generation stage to always have plane[0] correspond to the player who's playing.
+
+3. I also realized: since GOMOKU is a two-player game, after I pick a move, I also need to wait until my opponent picks a move, until I get to the next "state" where I pick an action. Is this true?
+
+Yes. From the lens of self-play, we should then think of the policy network as picking actions for both players. To handle this, we can generate a single game, split it into two trajectories and do our updates. 
+
+
