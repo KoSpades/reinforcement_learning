@@ -143,6 +143,7 @@ def generate_episode_for_reinforce(start_state, policy):
     Starting from start_state, following the input policy parameter.
     """
     episode_history = []
+    action_log_probs = []
     cur_state = start_state
     cur_turn = 0
     while (True):
@@ -158,7 +159,9 @@ def generate_episode_for_reinforce(start_state, policy):
         action_probs = F.softmax(masked_logits, dim=-1) # Note: dim=-1 since there's a batch dimension in the front
         action_dist = torch.distributions.Categorical(probs=action_probs)
         cur_action = action_dist.sample()
+        cur_action_log_prob = action_dist.log_prob(cur_action)
         episode_history.append((cur_state, cur_action))
+        action_log_probs.append(cur_action_log_prob)
         next_state = step(cur_state, cur_action, cur_turn)
         # Checking for termination
         res = check_win_cond(next_state, cur_turn)
@@ -173,7 +176,7 @@ def generate_episode_for_reinforce(start_state, policy):
             else:
                 episode_history.append((next_state, -1))
             break
-    return episode_history
+    return episode_history, action_log_probs
     
 
 def reinforce_algo(start_state, num_iter=1000):
@@ -182,12 +185,17 @@ def reinforce_algo(start_state, num_iter=1000):
     cur_turn = 0
     while (cur_iter < num_iter):
         # generate a complete episode
-        cur_episode = generate_episode_for_reinforce(start_state, cur_policy)
+        cur_episode, cur_actions_probs = generate_episode_for_reinforce(start_state, cur_policy)
         # pretty_print_state(cur_episode[-1][0])
         # perform updates: first, split the trajectory into two episodes since we are doing self-play,
         # then update for both episodes 
-        cur_reward = cur_episode[-1][1]
-        
+        black_reward = cur_episode[-1][1]
+        white_reward = -black_reward
+        cur_episode = cur_episode[:-1]
+        black_episode = cur_episode[::2]
+        white_episode = cur_episode[1::2]
+        # FROM HERE
+        print(cur_actions_probs)
         cur_iter += 1
 
 

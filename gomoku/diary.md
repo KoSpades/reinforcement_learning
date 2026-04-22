@@ -252,5 +252,7 @@ Yes. From the lens of self-play, we should then think of the policy network as p
 - t1.masked_fill(t2, val): fill the entries where t2 is True with some value
 
 5. Some torch functionalities:
-- dist = torch.distributions.Categorical(probs=my_probs): gives a probs distribution over a finite set of choices. We can later perform things like action = dist.sample() from it.
+- dist = torch.distributions.Categorical(probs=my_probs): gives a probs distribution over a finite set of choices. We can later perform things like action = dist.sample(), and log_prob = dist.log_prob(action) from it.
+
+We are right before actually performing the weight updates using both the black trajectory and white trajectory with the rewards and action log probability, will complete this tomorrow.
 
