@@ -229,7 +229,7 @@ I think we are ready to create the network and implement REINFORCE.
 
 ### Implementing the policy network
 
-Time to write some Torch :) We will do five layers of (Conv->Relu) followed by a FC with (64*9*9 -> 9*9).
+Time to write some Torch :) We will do five layers of (Conv->Relu) followed by a FC with (64,9,9 -> 9,9).
 
 This is done! Let's do Reinforce then.
 
@@ -247,4 +247,10 @@ Yes, we shall encode turn information. Easy fix is to swap the planes during act
 
 Yes. From the lens of self-play, we should then think of the policy network as picking actions for both players. To handle this, we can generate a single game, split it into two trajectories and do our updates. 
 
+4. Some tensor operations:
+- t1.unsqueeze(0)/squeeze(0): adds/removes a dimension of size 1 at first position. Typical for adding a "fake batch" dimension for some F to work.
+- t1.masked_fill(t2, val): fill the entries where t2 is True with some value
+
+5. Some torch functionalities:
+- dist = torch.distributions.Categorical(probs=my_probs): gives a probs distribution over a finite set of choices. We can later perform things like action = dist.sample() from it.
 

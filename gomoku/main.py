@@ -39,7 +39,7 @@ def check_win_cond(state, whose_turn):
     """
     Input:
         state
-        whose_turn: we will only be checking win cond after a specific player makes a move, so it's fine to include this
+        whose_turn: whoever just made a move (e.g. if black just made a move, whose_turn is 0)
     Output:
         0 if black wins, 1 if white. -1 o/w
     """ 
@@ -137,18 +137,38 @@ class PolicyNetwork(nn.Module):
         return logits
     
 
+def generate_episode_for_reinforce(start_state, policy):
+    """
+    Return a complete episode, starting from start_state, following the input policy parameter.
+    """
+    episode_history = []
+    cur_state = start_state
+    cur_turn = 0
+    while (True):
+        # generate an action using the NN
+        action_logits = policy(cur_state.unsqueeze(0)).squeeze(0)
+        occupied_spaces = cur_state.sum(dim=0)
+        legal_mask = (occupied_spaces == 0).flatten()
+        masked_logits = action_logits.masked_fill(~legal_mask, float("-inf"))
+        action_probs = F.softmax(masked_logits, dim=-1) # Note: dim=-1 since there's a batch dimension in the front
+        action_dist = torch.distributions.Categorical(probs=action_probs)
+        cur_action = action_dist.sample()
+        ...
+    
+
+def reinforce_algo(start_state, num_iter=1000):
+    cur_iter = 0
+    cur_policy = PolicyNetwork().to(start_state.device)
+    cur_turn = 0
+    while (cur_iter < num_iter):
+        # generate a complete episode
+        cur_episode = generate_episode_for_reinforce(start_state, cur_policy)
+        # perform updates
+        cur_iter += 1
+
+
 if __name__ == "__main__":
     print("Game start")
-    device = device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
     cur_state = torch.zeros((2, BOARD_SIZE, BOARD_SIZE), device=device)
-    cur_turn = 0
-    while True:
-        cur_action = get_random_legal_move(cur_state)
-        next_state = step(cur_state, cur_action, cur_turn)
-        cur_state = next_state
-        if (check_win_cond(cur_state, cur_turn) < 0):
-            cur_turn = 1 - cur_turn # Note: have to do integer indexing here over Boolean indexing
-        else:
-            break
-    print("Game has ended.")
-    pretty_print_state(cur_state)
+    reinforce_algo(cur_state, 1)
