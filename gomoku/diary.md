@@ -287,7 +287,17 @@ We actually got to play against it in action!
 Trained for 1000 iter (took about 6 minutes).
 It now has learned to place 5 in-a-row, which I think is improvement, due to how bad the initial policy is (i.e. random).
 
-But we also found something super interesting: over multiple runs of the game, the NN always seems to be picking the SAME SEQUENCE of moves over and over again. After searching online, it seems like it's a famous problem called the entropy collapse, let's investigate this more. (looks like we need something like random initialization and entropy regularization to address this.)
+But we also found something super interesting: over multiple runs of the game, the NN always seems to be picking the SAME SEQUENCE of moves over and over again. After searching online, it seems like it's a famous problem called the entropy collapse, let's investigate this more. 
+
+### Dealing with entropy collapse
+
+1. Solution 1: add entropy regularization
+- We will modify the loss turn by subtracting from it the entire entropy over the trajectory, for some hyperparameter beta. We will use 0.01 to start with as suggested. 
+This is now done.
+
+2. Solution 2: randomized start board.
+
+### Potential point of inefficiencies with the current code
 
 It seems like there are many optimizations we can do to make the whole code much more efficient, and we will implmement all of them. But before that, let's actually look at how the loss evolves with with iteration number. 
 
@@ -296,12 +306,11 @@ We added a simple helper that plots the loss by iter number. But the plot is dif
 Let's work on some optimizations to the existing code, and see how much efficiency gain we got.
 - For now: 1000 iter takes 330 seconds.
 
-### Potential point of inefficiencies with the current code
-
 1. check_win_cond(): we updated this code to use plain python to only check for the four lines that the lastly placed stone is at. It led to some small speedup, which is fine.
 
 2. Moving training to CPU
 
 This one worked immediately (8X speedup, from 330s -> 45s), since we are not really taking advantage of batches in our code yet, we will make this fix eventually, but for now let's just use GPU.
 
-Tomorrow: let's start with fixing the entropy collapse problem.
+Tomorrow: let's implement some better baselines: e.g. playing against stable opponents, or something else, that gives us more insights into whether the policy is actually improving. We will also implement the random start position heuristic to help with entropy collapse.
+

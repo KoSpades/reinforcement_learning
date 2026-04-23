@@ -2,6 +2,9 @@
 
 import argparse
 from pathlib import Path
+import socket
+import threading
+import webbrowser
 
 import torch
 import torch.nn.functional as F
@@ -421,11 +424,49 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
     return app
 
 
+def browser_url_for_host(host, port):
+    if host in {"0.0.0.0", "::"}:
+        browser_host = "127.0.0.1"
+    else:
+        browser_host = host
+    return f"http://{browser_host}:{port}"
+
+
+def open_browser_later(url, delay=1.0):
+    timer = threading.Timer(delay, lambda: webbrowser.open(url))
+    timer.daemon = True
+    timer.start()
+
+
+def port_is_available(host, port):
+    bind_host = "0.0.0.0" if host == "::" else host
+    family = socket.AF_INET6 if ":" in bind_host and bind_host != "0.0.0.0" else socket.AF_INET
+    with socket.socket(family, socket.SOCK_STREAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            sock.bind((bind_host, port))
+        except OSError:
+            return False
+    return True
+
+
+def choose_port(host, preferred_port, max_tries=20):
+    for port in range(preferred_port, preferred_port + max_tries):
+        if port_is_available(host, port):
+            return port
+    raise RuntimeError(f"No available port found in range {preferred_port}-{preferred_port + max_tries - 1}.")
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Play Gomoku against a saved policy in a browser.")
     parser.add_argument("--model-path", type=Path, default=DEFAULT_MODEL_PATH, help="Which saved weights to load.")
-    parser.add_argument("--host", default="127.0.0.1", help="Bind address for the server.")
+    parser.add_argument("--host", default="0.0.0.0", help="Bind address for the server.")
     parser.add_argument("--port", type=int, default=5000, help="Port for the server.")
+    parser.add_argument(
+        "--no-browser",
+        action="store_true",
+        help="Do not automatically open the app in the default browser.",
+    )
     return parser.parse_args()
 
 
@@ -438,7 +479,14 @@ def main():
         )
 
     app = create_app(model_path=args.model_path)
-    app.run(host=args.host, port=args.port, debug=False)
+    chosen_port = choose_port(args.host, args.port)
+    if chosen_port != args.port:
+        print(f"Port {args.port} is in use. Falling back to {chosen_port}.")
+    launch_url = browser_url_for_host(args.host, chosen_port)
+    print(f"Launching Gomoku UI at {launch_url}")
+    if not args.no_browser:
+        open_browser_later(launch_url)
+    app.run(host=args.host, port=chosen_port, debug=False)
 
 
 if __name__ == "__main__":

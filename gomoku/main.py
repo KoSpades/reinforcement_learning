@@ -159,6 +159,7 @@ def generate_episode_for_reinforce(start_state, policy):
     """
     episode_history = []
     action_log_probs = []
+    entropies = []
     cur_state = start_state
     cur_turn = 0
     while (True):
@@ -173,14 +174,17 @@ def generate_episode_for_reinforce(start_state, policy):
         if not legal_mask.any():
             episode_history = []
             action_log_probs = []
+            entropies = []
             break
         masked_logits = action_logits.masked_fill(~legal_mask, float("-inf"))
         action_probs = F.softmax(masked_logits, dim=-1) # Note: dim=-1 since there's a batch dimension in the front
         action_dist = torch.distributions.Categorical(probs=action_probs)
         cur_action = action_dist.sample()
         cur_action_log_prob = action_dist.log_prob(cur_action)
+        cur_entropy = action_dist.entropy()
         episode_history.append((cur_state, cur_action))
         action_log_probs.append(cur_action_log_prob)
+        entropies.append(cur_entropy)
         next_state = step(cur_state, cur_action, cur_turn)
         # Checking for termination
         res = check_win_cond(next_state, cur_turn, cur_action)
@@ -195,19 +199,19 @@ def generate_episode_for_reinforce(start_state, policy):
             else:
                 episode_history.append((next_state, -1))
             break
-    return episode_history, action_log_probs
+    return episode_history, action_log_probs, entropies
     
 
-def reinforce_algo(start_state, num_iter=1000):
+def reinforce_algo(start_state, num_iter=1000, learning_rate=1e-3, regular_beta=1):
     cur_iter = 0
     cur_policy = PolicyNetwork().to(start_state.device)
-    optimizer = torch.optim.Adam(cur_policy.parameters(), lr=1e-3)
+    optimizer = torch.optim.Adam(cur_policy.parameters(), lr=learning_rate)
     loss_by_iter = []
     while (cur_iter < num_iter):
         if (cur_iter % 100 == 0):
             print(f"Current iter: {cur_iter}")
         # generate a complete episode
-        cur_episode, cur_actions_probs = generate_episode_for_reinforce(start_state, cur_policy)
+        cur_episode, cur_actions_probs, cur_entropies = generate_episode_for_reinforce(start_state, cur_policy)
         # pretty_print_state(cur_episode[-1][0])
 
         # First, split the episode into two trajectories since we are doing self-play.
@@ -224,8 +228,9 @@ def reinforce_algo(start_state, num_iter=1000):
             black_loss = -torch.stack(black_log_probs).sum() * black_reward
             white_loss = -torch.stack(white_log_probs).sum() * white_reward
             total_loss = black_loss + white_loss
+            regularized_loss = total_loss - regular_beta * torch.stack(cur_entropies).mean() 
             optimizer.zero_grad()
-            total_loss.backward()
+            regularized_loss.backward()
             optimizer.step()
 
             loss_by_iter.append(total_loss)
