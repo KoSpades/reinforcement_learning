@@ -264,7 +264,7 @@ Let's not get into hyperparameter tuning for now, so let's just use a fixed lear
 
 ### How do to weight updates in general in Torch?
 
-1. Define a scalar loss.
+1. Define a scalar loss. (for GOMOKU, it's the sum of all log action probs times G)
 2. Clear old gradients: optimizer.zero_grad()
 3. Back propagation with: loss.backward()
 4. Perform weight updates: optimizer.step()
@@ -272,3 +272,33 @@ Let's not get into hyperparameter tuning for now, so let's just use a fixed lear
 One thing I realized is that the current code has a bug for games that led to a draw, so we need to handle draw games properly.
 
 Fundamentally, since draw games led to zero reward, it will not have an impact on the training, so let's just skip them entirely. 
+
+DONE! We finished implementing REINFORCE. Let's set up something to see it in action/check its effectiveness.
+
+There are definitely many more sound strategies to evaluate its improvement, but let's start with vibe coding a UI so that I can actually play against it, because that will be fun :)
+
+### Saving/load a torch NN
+- Save it with: torch.save(my_model.state_dict(), "model_path")
+- Load it with: another_model.load_state_dict("model_path", map_location=device)
+
+We actually got to play against it in action! 
+
+### First Set of Results
+Trained for 1000 iter (took about 6 minutes).
+It now has learned to place 5 in-a-row, which I think is improvement, due to how bad the initial policy is (i.e. random).
+
+It seems like there are many optimizations we can do to make the whole code much more efficient, and we will implmement all of them. But before that, let's actually look at how the loss evolves with with iteration number. 
+
+We added a simple helper that plots the loss by iter number. But the plot is different from a supervised learning plot where the loss monotonically converges to zero, we will come back to make sense of this plot later.
+
+Let's work on some optimizations to the existing code, and see how much efficiency gain we got.
+- For now: 1000 iter takes 330 seconds.
+
+### Existing point of inefficiencies
+
+1. check_win_cond(): do not recreate the kernel tensor every time
+
+This function is called every time we make a move. Right now, it creates four tensors and move them to device, apparently this is highly inefficient. 
+
+Let's move the kernel elsewhere, and pass it to check_win_cond() instead.
+

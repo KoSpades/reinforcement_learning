@@ -1,9 +1,11 @@
 import torch
+import time
 from torch import nn
 import torch.nn.functional as F
+import matplotlib.pyplot as plt
+from pathlib import Path
 
-
-BOARD_SIZE = 9
+from config import BOARD_SIZE, TOTAL_ITER
 
 
 def move_is_legal(state, action):
@@ -35,7 +37,7 @@ def get_random_legal_move(state):
     return legal_actions[legal_idx]
 
 
-def check_win_cond(state, whose_turn):
+def check_win_cond(state, whose_turn, kernels):
     """
     Input:
         state
@@ -45,12 +47,6 @@ def check_win_cond(state, whose_turn):
     """ 
     device = state.device
     # Set up the shape checks: We need four shapes: horizontal, diagonal, and two diagonal
-    kernels = [
-        torch.ones((1, 1, 1, 5), device=device),
-        torch.ones((1, 1, 5, 1), device=device),
-        torch.eye(5, device=device).view(1, 1, 5, 5),
-        torch.fliplr(torch.eye(5, device=device)).view(1, 1, 5, 5)
-    ]
     player_board = state[whose_turn].view(1, 1, BOARD_SIZE, BOARD_SIZE)
 
     for ker in kernels:
@@ -132,12 +128,13 @@ class PolicyNetwork(nn.Module):
             nn.Linear(64*BOARD_SIZE*BOARD_SIZE, BOARD_SIZE*BOARD_SIZE)
         )
 
+
     def forward(self, x):
         logits = self.layers(x)
         return logits
     
 
-def generate_episode_for_reinforce(start_state, policy):
+def generate_episode_for_reinforce(start_state, policy, win_kernels):
     """
     Return a complete episode of (state, action) pairs, and the final reward (who won). 
     Starting from start_state, following the input policy parameter.
@@ -168,7 +165,7 @@ def generate_episode_for_reinforce(start_state, policy):
         action_log_probs.append(cur_action_log_prob)
         next_state = step(cur_state, cur_action, cur_turn)
         # Checking for termination
-        res = check_win_cond(next_state, cur_turn)
+        res = check_win_cond(next_state, cur_turn, win_kernels)
         # First case: not terminated yet
         if res < 0:
             cur_state = next_state
@@ -183,13 +180,16 @@ def generate_episode_for_reinforce(start_state, policy):
     return episode_history, action_log_probs
     
 
-def reinforce_algo(start_state, num_iter=1000):
+def reinforce_algo(start_state, win_kernels, num_iter=1000):
     cur_iter = 0
     cur_policy = PolicyNetwork().to(start_state.device)
     optimizer = torch.optim.Adam(cur_policy.parameters(), lr=1e-3)
+    loss_by_iter = []
     while (cur_iter < num_iter):
+        if (cur_iter % 100 == 0):
+            print(f"Current iter: {cur_iter}")
         # generate a complete episode
-        cur_episode, cur_actions_probs = generate_episode_for_reinforce(start_state, cur_policy)
+        cur_episode, cur_actions_probs = generate_episode_for_reinforce(start_state, cur_policy, win_kernels)
         # pretty_print_state(cur_episode[-1][0])
 
         # First, split the episode into two trajectories since we are doing self-play.
@@ -210,14 +210,36 @@ def reinforce_algo(start_state, num_iter=1000):
             total_loss.backward()
             optimizer.step()
 
+            loss_by_iter.append(total_loss)
             cur_iter += 1
 
-    return cur_policy
+    return cur_policy, loss_by_iter
+
+
+def plot_loss_by_iter(loss_list):
+    loss_list = [loss.item() if torch.is_tensor(loss) else loss for loss in loss_list]
+    plt.plot(range(len(loss_list)), loss_list)
+    plt.xlabel("Iteration")
+    plt.ylabel("Loss")
+    plt.title("Training Loss")
+    plt.savefig(output_dir / f"loss_curve_{TOTAL_ITER}.png", dpi=200, bbox_inches="tight")
+
 
 
 if __name__ == "__main__":
-    print("Game start")
+    print("**************Training start**************")
+    start_time = time.time()
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+    kernels = [
+        torch.ones((1, 1, 1, 5), device=device),
+        torch.ones((1, 1, 5, 1), device=device),
+        torch.eye(5, device=device).view(1, 1, 5, 5),
+        torch.fliplr(torch.eye(5, device=device)).view(1, 1, 5, 5)
+    ]
     cur_state = torch.zeros((2, BOARD_SIZE, BOARD_SIZE), device=device)
-    final_policy = reinforce_algo(cur_state, 100)
-    print(final_policy.state_dict())
+    final_policy, loss_list = reinforce_algo(cur_state, kernels, TOTAL_ITER)
+    output_dir = Path(__file__).resolve().parent
+    torch.save(final_policy.state_dict(), output_dir / f"final_policy_{TOTAL_ITER}.pt")
+    print(f"Total training time is {time.time() - start_time}")
+
+    plot_loss_by_iter(loss_list=loss_list)
