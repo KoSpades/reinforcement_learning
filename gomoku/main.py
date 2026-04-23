@@ -1,6 +1,7 @@
 import torch
 import time
 from torch import nn
+import random
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
 from pathlib import Path
@@ -152,7 +153,7 @@ class PolicyNetwork(nn.Module):
         return logits
     
 
-def generate_episode_for_reinforce(start_state, policy):
+def generate_episode_for_reinforce(start_state, policy, random_start=True):
     """
     Return a complete episode of (state, action) pairs, and the final reward (who won). 
     Starting from start_state, following the input policy parameter.
@@ -160,8 +161,14 @@ def generate_episode_for_reinforce(start_state, policy):
     episode_history = []
     action_log_probs = []
     entropies = []
-    cur_state = start_state
     cur_turn = 0
+    if random_start:
+        total_random_moves = random.randint(2,  2)
+        for _ in range(total_random_moves):
+            cur_action = get_random_legal_move(start_state)
+            start_state = step(start_state, cur_action, cur_turn)
+            cur_turn = 1 - cur_turn
+    cur_state = start_state
     while (True):
         # generate an action using the NN
         if cur_turn == 0:
@@ -202,7 +209,7 @@ def generate_episode_for_reinforce(start_state, policy):
     return episode_history, action_log_probs, entropies
     
 
-def reinforce_algo(start_state, num_iter=1000, learning_rate=1e-3, regular_beta=1):
+def reinforce_algo(start_state, num_iter=1000, learning_rate=1e-3, regular_beta=0.03):
     cur_iter = 0
     cur_policy = PolicyNetwork().to(start_state.device)
     optimizer = torch.optim.Adam(cur_policy.parameters(), lr=learning_rate)

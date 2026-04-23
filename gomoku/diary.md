@@ -289,13 +289,14 @@ It now has learned to place 5 in-a-row, which I think is improvement, due to how
 
 But we also found something super interesting: over multiple runs of the game, the NN always seems to be picking the SAME SEQUENCE of moves over and over again. After searching online, it seems like it's a famous problem called the entropy collapse, let's investigate this more. 
 
-### Dealing with entropy collapse
+## Dealing with entropy collapse
 
 1. Solution 1: add entropy regularization
 - We will modify the loss turn by subtracting from it the entire entropy over the trajectory, for some hyperparameter beta. We will use 0.01 to start with as suggested. 
-This is now done.
+After playing around this parameter (which has a HUGE impact on performance, for the few values we have tried), we think 0.3 may be too large, and we are going with 0.3 for now.
 
 2. Solution 2: randomized start board.
+- We implemented this. (randomly pick 2 moves in the beginning)
 
 ### Potential point of inefficiencies with the current code
 
@@ -312,5 +313,6 @@ Let's work on some optimizations to the existing code, and see how much efficien
 
 This one worked immediately (8X speedup, from 330s -> 45s), since we are not really taking advantage of batches in our code yet, we will make this fix eventually, but for now let's just use GPU.
 
-Tomorrow: let's implement some better baselines: e.g. playing against stable opponents, or something else, that gives us more insights into whether the policy is actually improving. We will also implement the random start position heuristic to help with entropy collapse.
+Tomorrow: let's implement some better baselines: e.g. playing against stable opponents, or something else, that gives us more insights into whether the policy is actually improving. We will do a fully-random baseline, and another baseline where for each move, we check if we can immediately win, if yes do that, else use some freezed NN to output moves.
 
+Another observation: it looks like the network is quite good at making 4 in a row, but not 5. It may be because of the training process, as we are skipping over the final board position (i.e. the winning position), so somehow NN learned that 4 in a row is good, but it did not learn how to finish a game off properly. We should also investigate this.
