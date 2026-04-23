@@ -5,7 +5,7 @@ import torch.nn.functional as F
 import matplotlib.pyplot as plt
 from pathlib import Path
 
-from config import BOARD_SIZE, TOTAL_ITER
+from config import BOARD_SIZE, TRAIN_ITER
 
 
 def move_is_legal(state, action):
@@ -37,7 +37,7 @@ def get_random_legal_move(state):
     return legal_actions[legal_idx]
 
 
-def check_win_cond(state, whose_turn, kernels):
+def check_win_cond(state, whose_turn, action):
     """
     Input:
         state
@@ -45,13 +45,31 @@ def check_win_cond(state, whose_turn, kernels):
     Output:
         0 if black wins, 1 if white. -1 o/w
     """ 
-    device = state.device
+    def count_direction(board, row, col, row_dir, col_dir):
+        count = 1
+        r, c = row + row_dir, col + col_dir
+        while 0 <= r < BOARD_SIZE and 0 <= c < BOARD_SIZE and board[r][c] == 1:
+            count += 1
+            r += row_dir
+            c += col_dir
+        r, c = row - row_dir, col - col_dir
+        while 0 <= r < BOARD_SIZE and 0 <= c < BOARD_SIZE and board[r][c] == 1:
+            count += 1
+            r -= row_dir
+            c -= col_dir
+        return count
+        
     # Set up the shape checks: We need four shapes: horizontal, diagonal, and two diagonal
-    player_board = state[whose_turn].view(1, 1, BOARD_SIZE, BOARD_SIZE)
+    action = int(action)
+    board = state[whose_turn]
 
-    for ker in kernels:
-        if (F.conv2d(player_board, ker) >= 5).any():
+    directions = [(1, 0), (0, 1), (1, 1), (1, -1)]
+    row = action // BOARD_SIZE
+    col = action % BOARD_SIZE
+    for dr, dc in directions:
+        if count_direction(board, row, col, dr, dc) >= 5:
             return whose_turn
+        
     return -1
 
 
@@ -134,7 +152,7 @@ class PolicyNetwork(nn.Module):
         return logits
     
 
-def generate_episode_for_reinforce(start_state, policy, win_kernels):
+def generate_episode_for_reinforce(start_state, policy):
     """
     Return a complete episode of (state, action) pairs, and the final reward (who won). 
     Starting from start_state, following the input policy parameter.
@@ -165,7 +183,7 @@ def generate_episode_for_reinforce(start_state, policy, win_kernels):
         action_log_probs.append(cur_action_log_prob)
         next_state = step(cur_state, cur_action, cur_turn)
         # Checking for termination
-        res = check_win_cond(next_state, cur_turn, win_kernels)
+        res = check_win_cond(next_state, cur_turn, cur_action)
         # First case: not terminated yet
         if res < 0:
             cur_state = next_state
@@ -180,7 +198,7 @@ def generate_episode_for_reinforce(start_state, policy, win_kernels):
     return episode_history, action_log_probs
     
 
-def reinforce_algo(start_state, win_kernels, num_iter=1000):
+def reinforce_algo(start_state, num_iter=1000):
     cur_iter = 0
     cur_policy = PolicyNetwork().to(start_state.device)
     optimizer = torch.optim.Adam(cur_policy.parameters(), lr=1e-3)
@@ -189,7 +207,7 @@ def reinforce_algo(start_state, win_kernels, num_iter=1000):
         if (cur_iter % 100 == 0):
             print(f"Current iter: {cur_iter}")
         # generate a complete episode
-        cur_episode, cur_actions_probs = generate_episode_for_reinforce(start_state, cur_policy, win_kernels)
+        cur_episode, cur_actions_probs = generate_episode_for_reinforce(start_state, cur_policy)
         # pretty_print_state(cur_episode[-1][0])
 
         # First, split the episode into two trajectories since we are doing self-play.
@@ -222,24 +240,18 @@ def plot_loss_by_iter(loss_list):
     plt.xlabel("Iteration")
     plt.ylabel("Loss")
     plt.title("Training Loss")
-    plt.savefig(output_dir / f"loss_curve_{TOTAL_ITER}.png", dpi=200, bbox_inches="tight")
-
+    plt.savefig(output_dir / f"loss_curve_{TRAIN_ITER}.png", dpi=200, bbox_inches="tight")
 
 
 if __name__ == "__main__":
     print("**************Training start**************")
     start_time = time.time()
-    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
-    kernels = [
-        torch.ones((1, 1, 1, 5), device=device),
-        torch.ones((1, 1, 5, 1), device=device),
-        torch.eye(5, device=device).view(1, 1, 5, 5),
-        torch.fliplr(torch.eye(5, device=device)).view(1, 1, 5, 5)
-    ]
+    # device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+    device = "cpu"
     cur_state = torch.zeros((2, BOARD_SIZE, BOARD_SIZE), device=device)
-    final_policy, loss_list = reinforce_algo(cur_state, kernels, TOTAL_ITER)
+    final_policy, loss_list = reinforce_algo(cur_state, TRAIN_ITER)
     output_dir = Path(__file__).resolve().parent
-    torch.save(final_policy.state_dict(), output_dir / f"final_policy_{TOTAL_ITER}.pt")
+    torch.save(final_policy.state_dict(), output_dir / f"final_policy_{TRAIN_ITER}.pt")
     print(f"Total training time is {time.time() - start_time}")
 
     plot_loss_by_iter(loss_list=loss_list)

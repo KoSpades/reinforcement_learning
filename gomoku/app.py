@@ -7,26 +7,17 @@ import torch
 import torch.nn.functional as F
 from flask import Flask, redirect, render_template_string, request, url_for
 
-from config import BOARD_SIZE, TOTAL_ITER
+from config import BOARD_SIZE, UI_ITER
 from main import PolicyNetwork, check_win_cond, step
 
 
-DEFAULT_MODEL_PATH = Path(f"final_policy_{TOTAL_ITER}.pt")
+DEFAULT_MODEL_PATH = Path(f"final_policy_{UI_ITER}.pt")
 
 
 def get_device():
     if torch.backends.mps.is_available():
         return torch.device("mps")
     return torch.device("cpu")
-
-
-def get_win_kernels(device):
-    return [
-        torch.ones((1, 1, 1, 5), device=device),
-        torch.ones((1, 1, 5, 1), device=device),
-        torch.eye(5, device=device).view(1, 1, 5, 5),
-        torch.fliplr(torch.eye(5, device=device)).view(1, 1, 5, 5),
-    ]
 
 
 def empty_board(device=None):
@@ -84,8 +75,8 @@ def select_policy_action(policy, state, policy_turn):
         return int(action_dist.sample().item())
 
 
-def evaluate_outcome(state, last_player, kernels):
-    winner = check_win_cond(state, last_player, kernels)
+def evaluate_outcome(state, last_player, action):
+    winner = check_win_cond(state, last_player, action)
     if winner == 0:
         return "Black wins."
     if winner == 1:
@@ -99,7 +90,6 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
     app = Flask(__name__)
     app.config["MODEL_PATH"] = Path(model_path)
     app.config["DEVICE"] = get_device()
-    app.config["WIN_KERNELS"] = get_win_kernels(app.config["DEVICE"])
     app.config["POLICY"] = load_policy(app.config["MODEL_PATH"], app.config["DEVICE"])
     app.config["GAME_STATE"] = {
         "board": empty_board(device=app.config["DEVICE"]),
@@ -205,8 +195,11 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
           grid-template-columns: repeat({{ board_size }}, minmax(0, 1fr));
           gap: 0;
           width: min(100%, min(74vh, 74vw));
+          aspect-ratio: 1;
           margin: 0 auto;
-          padding: 12px;
+          box-sizing: border-box;
+          position: relative;
+          overflow: hidden;
           border-radius: 26px;
           background:
             linear-gradient(180deg, rgba(255, 241, 214, 0.45), rgba(151, 105, 47, 0.12)),
@@ -216,15 +209,49 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
             inset 0 -10px 18px rgba(122, 76, 27, 0.12),
             0 16px 34px rgba(76, 49, 24, 0.16);
         }
+        .board::before {
+          --grid-step: calc(100% / ({{ board_size }} - 1));
+          content: "";
+          position: absolute;
+          inset: calc(50% / {{ board_size }});
+          background:
+            repeating-linear-gradient(
+              to right,
+              transparent 0 calc(var(--grid-step) - 1px),
+              var(--board-line) calc(var(--grid-step) - 1px) calc(var(--grid-step) + 0.5px),
+              transparent calc(var(--grid-step) + 0.5px) var(--grid-step)
+            ),
+            repeating-linear-gradient(
+              to bottom,
+              transparent 0 calc(var(--grid-step) - 1px),
+              var(--board-line) calc(var(--grid-step) - 1px) calc(var(--grid-step) + 0.5px),
+              transparent calc(var(--grid-step) + 0.5px) var(--grid-step)
+            );
+          background-size: 100% 100%;
+          background-repeat: no-repeat;
+          pointer-events: none;
+          z-index: 0;
+        }
+        .board::after {
+          content: "";
+          position: absolute;
+          inset: calc(50% / {{ board_size }});
+          border: 1.5px solid var(--board-line);
+          pointer-events: none;
+          z-index: 0;
+        }
         .cell-form {
           margin: 0;
+          position: relative;
+          z-index: 1;
         }
         .cell {
           aspect-ratio: 1;
           width: 100%;
-          display: grid;
-          place-items: center;
-          border: 1px solid var(--board-line);
+          appearance: none;
+          -webkit-appearance: none;
+          display: block;
+          border: none;
           border-radius: 0;
           background: transparent;
           padding: 0;
@@ -232,24 +259,27 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
           color: transparent;
           position: relative;
         }
-        .cell::after {
-          content: "";
-          width: 70%;
-          height: 70%;
+        .stone {
+          position: absolute;
+          left: 50%;
+          top: 50%;
+          width: 72%;
+          height: 72%;
           border-radius: 50%;
-          transform: scale(0.22);
+          transform: translate(-50%, -50%) scale(0);
           transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
+          z-index: 1;
         }
-        .cell.empty:hover:not([disabled])::after {
-          transform: scale(0.52);
-          background: rgba(255, 248, 235, 0.42);
+        .cell.empty:hover:not([disabled]) .stone {
+          transform: translate(-50%, -50%) scale(0.34);
+          background: rgba(255, 248, 235, 0.45);
           box-shadow: inset 0 0 0 1px rgba(90, 58, 25, 0.18);
         }
         .cell.black {
           cursor: default;
         }
-        .cell.black::after {
-          transform: scale(1);
+        .cell.black .stone {
+          transform: translate(-50%, -50%) scale(1);
           background: radial-gradient(circle at 30% 30%, #55504a, var(--stone-black) 58%, #090909 100%);
           box-shadow:
             inset -5px -6px 10px rgba(255, 255, 255, 0.05),
@@ -258,8 +288,8 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
         .cell.white {
           cursor: default;
         }
-        .cell.white::after {
-          transform: scale(1);
+        .cell.white .stone {
+          transform: translate(-50%, -50%) scale(1);
           background: radial-gradient(circle at 30% 30%, #ffffff, #f6eddc 68%, #d8ccb8 100%);
           box-shadow:
             inset -4px -5px 8px rgba(110, 92, 65, 0.12),
@@ -282,7 +312,6 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
           }
           .board {
             width: min(100%, calc(100vh - 150px));
-            padding: 8px;
           }
           .message {
             font-size: 0.9rem;
@@ -313,7 +342,7 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
                     type="submit"
                     {% if game_over or cell %}disabled{% endif %}
                   >
-                    {{ cell or "·" }}
+                    <span class="stone"></span>
                   </button>
                 </form>
               {% endfor %}
@@ -349,7 +378,7 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
             game_state["message"] = "Illegal move. Pick an empty square."
             return redirect(url_for("index"))
 
-        outcome = evaluate_outcome(board, last_player=0, kernels=app.config["WIN_KERNELS"])
+        outcome = evaluate_outcome(board, last_player=0, action=action)
         if outcome is not None:
             app.config["GAME_STATE"] = {
                 "board": board,
@@ -368,7 +397,7 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
             return redirect(url_for("index"))
 
         board = step(board, policy_action, whose_turn=1)
-        outcome = evaluate_outcome(board, last_player=1, kernels=app.config["WIN_KERNELS"])
+        outcome = evaluate_outcome(board, last_player=1, action=policy_action)
         message = outcome or f"Policy played at row {policy_action // BOARD_SIZE}, col {policy_action % BOARD_SIZE}."
         app.config["GAME_STATE"] = {
             "board": board,
