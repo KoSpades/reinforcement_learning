@@ -11,39 +11,11 @@ from model import PolicyNetwork
 from config import BOARD_SIZE, TRAIN_ITER, MODELS_DIR, PLOTS_DIR
     
 
-def pretty_print_state(state):
-    """
-    Pretty-print a Gomoku board.
-
-    state shape:
-        (2, BOARD_SIZE, BOARD_SIZE)
-
-    state[0] = black stones
-    state[1] = white stones
-    """
-    symbols = {
-        0: ".",
-        1: "B",
-        2: "W",
-    }
-
-    occupied = state[0] + 2 * state[1]
-
-    print("   " + " ".join(str(i) for i in range(BOARD_SIZE)))
-
-    for row_idx in range(BOARD_SIZE):
-        row_symbols = []
-        for col_idx in range(BOARD_SIZE):
-            cell = int(occupied[row_idx][col_idx].item())
-            row_symbols.append(symbols[cell])
-
-        print(f"{row_idx:2} " + " ".join(row_symbols))
-    
-
 def generate_episode_for_reinforce(start_state, policy, random_start=True):
     """
     Return a complete episode of (state, action) pairs, and the final reward (who won). 
     Starting from start_state, following the input policy parameter.
+    Self-play: both players use the same policy NN.
     """
     episode_history = []
     action_log_probs = []
@@ -113,8 +85,6 @@ def reinforce_algo(start_state, num_iter=1000, learning_rate=1e-3, regular_beta=
             black_reward = cur_episode[-1][1]
             white_reward = -black_reward
             cur_episode = cur_episode[:-1]
-            # black_episode = cur_episode[::2]
-            # white_episode = cur_episode[1::2]
             black_log_probs = cur_actions_probs[::2]
             white_log_probs = cur_actions_probs[1::2]
 

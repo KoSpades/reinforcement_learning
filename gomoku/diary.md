@@ -293,7 +293,7 @@ But we also found something super interesting: over multiple runs of the game, t
 
 1. Solution 1: add entropy regularization
 - We will modify the loss turn by subtracting from it the entire entropy over the trajectory, for some hyperparameter beta. We will use 0.01 to start with as suggested. 
-After playing around this parameter (which has a HUGE impact on performance, for the few values we have tried), we think 0.3 may be too large, and we are going with 0.3 for now.
+After playing around this parameter (which has a HUGE impact on performance, for the few values we have tried), we think 0.3 may be too large, and we are sticking with 0.01 for now.
 
 2. Solution 2: randomized start board.
 - We implemented this. (randomly pick 2 moves in the beginning)

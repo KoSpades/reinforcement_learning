@@ -51,6 +51,7 @@ def calc_win_rate(our_player: OurPlayer, opponent, num_games=100, random_start=T
 
 if __name__ == "__main__":
     print("-----------Evaluation starting-------------")
+    # our_player = OurPlayer(MODELS_DIR / "final_policy_1000.pt")
     our_player = OurPlayer(MODELS_DIR / "final_policy_10000.pt")
     # our_opponent = RandomOpponent()
     # our_opponent = OurPlayer(MODELS_DIR / "final_policy_1000.pt")

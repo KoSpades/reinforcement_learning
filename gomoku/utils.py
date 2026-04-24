@@ -92,3 +92,32 @@ def step(state, action, whose_turn):
         return next_state
     else:
         raise ValueError(f"Illegal move at action {action}")
+    
+
+def pretty_print_state(state):
+    """
+    Pretty-print a Gomoku board.
+
+    state shape:
+        (2, BOARD_SIZE, BOARD_SIZE)
+
+    state[0] = black stones
+    state[1] = white stones
+    """
+    symbols = {
+        0: ".",
+        1: "B",
+        2: "W",
+    }
+
+    occupied = state[0] + 2 * state[1]
+
+    print("   " + " ".join(str(i) for i in range(BOARD_SIZE)))
+
+    for row_idx in range(BOARD_SIZE):
+        row_symbols = []
+        for col_idx in range(BOARD_SIZE):
+            cell = int(occupied[row_idx][col_idx].item())
+            row_symbols.append(symbols[cell])
+
+        print(f"{row_idx:2} " + " ".join(row_symbols))
