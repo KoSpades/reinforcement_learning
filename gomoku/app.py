@@ -10,11 +10,12 @@ import torch
 import torch.nn.functional as F
 from flask import Flask, redirect, render_template_string, request, url_for
 
-from config import BOARD_SIZE, UI_ITER
-from main import PolicyNetwork, check_win_cond, step
+from config import BOARD_SIZE, UI_ITER, MODELS_DIR
+from model import PolicyNetwork
+from utils import check_win_cond, step
 
 
-DEFAULT_MODEL_PATH = Path(f"final_policy_{UI_ITER}.pt")
+DEFAULT_MODEL_PATH = MODELS_DIR / f"final_policy_{UI_ITER}.pt"
 
 
 def get_device():

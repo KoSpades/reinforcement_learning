@@ -316,3 +316,28 @@ This one worked immediately (8X speedup, from 330s -> 45s), since we are not rea
 Tomorrow: let's implement some better baselines: e.g. playing against stable opponents, or something else, that gives us more insights into whether the policy is actually improving. We will do a fully-random baseline, and another baseline where for each move, we check if we can immediately win, if yes do that, else use some freezed NN to output moves.
 
 Another observation: it looks like the network is quite good at making 4 in a row, but not 5. It may be because of the training process, as we are skipping over the final board position (i.e. the winning position), so somehow NN learned that 4 in a row is good, but it did not learn how to finish a game off properly. We should also investigate this.
+
+## 04/23/26
+
+As discussed yesterday, we created two versions of opponents for better evaluation: the first one picks random moves, the second one has the winning/block heuristic, and otherwise picks moves according to a frozen NN.
+
+We started a new opponent.py for this purpose.
+
+### Evaluation against fixed opponents
+
+We will just measure win rate against a chosen set of opponents, out of 100 games, where we randomly alter who starts first. And each game we will do 1 or 2 random moves.
+
+We started a new evaluation.py for this purpose.
+
+We also did some other refactoring. An outline of the repo:
+- main.py: the major RL logic there: REINFORCE, generate_episode()
+- utils.py: a bunch of generic utility function like step(), check_win_cond(), and get_random_legal_move()
+- model.py: contains the NN architecture
+- opponent: contains different opponent class with different action heuristics
+- evaluation: contains eval related stuff. (e.g., calc_win_rate() between two Player class.)
+
+So mostly a SE day, rather than a RL day :)
+
+From initial test: looks like 10000 iter beats 1000 iter 99 to 1. This is some evidence that the training is working. 
+
+Let's look to move into actor-critic hopefully tomorrow.
