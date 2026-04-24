@@ -338,6 +338,6 @@ We also did some other refactoring. An outline of the repo:
 
 So mostly a SE day, rather than a RL day :)
 
-From initial test: looks like 10000 iter beats 1000 iter 99 to 1. This is some evidence that the training is working. 
+From initial test: looks like 10000 iter beats 1000 iter 99 to 1. This is some evidence that the training is working. It also got 0 wins out of 100 against FirstOpponent(), which is both expected, and strong evidence that we have room for improvement.
 
 Let's look to move into actor-critic hopefully tomorrow.
