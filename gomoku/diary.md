@@ -343,3 +343,13 @@ So mostly a SE day, rather than a RL day :)
 - 10000 iter lost to FirstOpponent 0 to 100: this is both expected, and strong evidence that we have room for improvement.
 
 Let's look to move into actor-critic hopefully tomorrow.
+
+## 04/25/26
+
+To improve the training pipeline's flexbility, we will implement two additional flags:
+- if fresh_train and self-play: we train a NN from scratch, both following the same policy.
+- if fresh_train and not self-play: we train a NN from scratch, but pass in a fixed opponent
+- if not fresh_train and self-play: we continue training an existing NN, both following the same NN
+- if not fresh_train and not self-play: we continue training an existing NN and pass in a fixed opponent
+
+This ends up being a lot of work actually, but we can now train against a fixed opponent now.

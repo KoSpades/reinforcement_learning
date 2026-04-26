@@ -34,7 +34,8 @@ def load_policy(path, device=None):
     if device is None:
         device = get_device()
     policy = PolicyNetwork().to(device)
-    state_dict = torch.load(Path(path), map_location=device)
+    checkpoint = torch.load(Path(path), map_location=device)
+    state_dict = checkpoint["model"] if "model" in checkpoint else checkpoint
     policy.load_state_dict(state_dict)
     policy.eval()
     return policy

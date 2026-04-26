@@ -16,31 +16,53 @@ class OurPlayer(Player):
     Our player: who acts strictly according to a NN.
     """
 
-    def __init__(self, model_path):
-        model_path = Path(model_path) 
-        self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
-        self.policy = PolicyNetwork().to(self.device)
-        state_dict = torch.load(model_path, map_location=self.device)
-        self.policy.load_state_dict(state_dict)
-        self.policy.eval()
+    def __init__(self, model_path=None, policy=None):
+        if policy is not None:
+            self.policy = policy
+            self.device = next(self.policy.parameters()).device
+        else:
+            self.device = torch.device("cpu")
+            self.policy = PolicyNetwork().to(self.device)
+            if model_path is not None:
+                model_path = Path(model_path)
+                checkpoint = torch.load(model_path, map_location=self.device)
+                state_dict = checkpoint["model"] if "model" in checkpoint else checkpoint
+                self.policy.load_state_dict(state_dict)
+            self.policy.eval()
 
-    def select_action(self, state, whose_turn):
+    def _policy_state(self, state, whose_turn):
+        if whose_turn == 0:
+            return state
+        return torch.stack([state[1], state[0]])
+
+    def select_action(self, state, whose_turn, sample=False):
         """
         whose_turn: 0 if I am black, 1 if I am white.
         """
-        if whose_turn == 0:
-            policy_state = state
-        else:
-            policy_state = torch.stack([state[1], state[0]])
-
-        with torch.no_grad():
+        policy_state = self._policy_state(state, whose_turn)
+        # We randomly sample an action
+        if sample:
             action_logits = self.policy(policy_state.unsqueeze(0).to(self.device)).squeeze(0)
             occupied_spaces = state.sum(dim=0)
             legal_mask = (occupied_spaces == 0).flatten().to(self.device)
             if not legal_mask.any():
-                return -1
+                return -1, None, None
             masked_logits = action_logits.masked_fill(~legal_mask, float("-inf"))
-            return int(torch.argmax(masked_logits).item())
+            action_dist = torch.distributions.Categorical(logits=masked_logits)
+            cur_action = action_dist.sample()
+            cur_action_log_prob = action_dist.log_prob(cur_action)
+            cur_entropy = action_dist.entropy()
+            return int(cur_action.item()), cur_action_log_prob, cur_entropy
+        # We deterministically pick an action (used in evaluation)
+        else:
+            with torch.no_grad():
+                action_logits = self.policy(policy_state.unsqueeze(0).to(self.device)).squeeze(0)
+                occupied_spaces = state.sum(dim=0)
+                legal_mask = (occupied_spaces == 0).flatten().to(self.device)
+                if not legal_mask.any():
+                    return -1
+                masked_logits = action_logits.masked_fill(~legal_mask, float("-inf"))
+                return int(torch.argmax(masked_logits).item())
 
 
 
@@ -67,9 +89,10 @@ class FirstOpponent(Player):
 
     def __init__(self, model_path=None):
         model_path = Path(model_path) if model_path is not None else MODELS_DIR / "freeze_10000_zero.pt"
-        self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+        self.device = torch.device("cpu")
         self.policy = PolicyNetwork().to(self.device)
-        state_dict = torch.load(model_path, map_location=self.device)
+        checkpoint = torch.load(model_path, map_location=self.device)
+        state_dict = checkpoint["model"] if "model" in checkpoint else checkpoint
         self.policy.load_state_dict(state_dict)
         self.policy.eval()
 
