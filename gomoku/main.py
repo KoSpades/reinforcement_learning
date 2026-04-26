@@ -8,7 +8,7 @@ from pathlib import Path
 
 from utils import check_win_cond, get_random_legal_move, step
 from model import PolicyNetwork
-from opponent import OurPlayer
+from opponent import *
 from config import BOARD_SIZE, TRAIN_ITER, MODELS_DIR, PLOTS_DIR
     
 
@@ -113,11 +113,11 @@ def compute_losses_for_reinforce(episode_data, self_play, regular_beta, device):
 
 def reinforce_algo(start_state, 
                    self_play,
+                   player_path=None,
+                   opponent=None,
                    num_iter=1000, 
                    learning_rate=1e-3, 
-                   regular_beta=0.01, 
-                   player_path=None,
-                   opponent=None):
+                   regular_beta=0.01):
     """
     Only when self_play is True do we want to train the opponent as well.
     """
@@ -159,10 +159,18 @@ def reinforce_algo(start_state,
     # Saving the model and optimizer for later, cotinuous training if needed
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
-    torch.save({
-        "model": cur_policy.state_dict(),
-        "optimizer": optimizer.state_dict()
-    }, MODELS_DIR / f"final_policy_{TRAIN_ITER}.pt")
+    if player_path is None:
+        torch.save({
+            "model": cur_policy.state_dict(),
+            "optimizer": optimizer.state_dict()
+        }, MODELS_DIR / f"final_policy_{TRAIN_ITER}.pt")
+        print(f"Training completed, saved to new path final_policy_{TRAIN_ITER}.pt")
+    else:
+        torch.save({
+            "model": cur_policy.state_dict(),
+            "optimizer": optimizer.state_dict()
+        }, player_path)
+        print(f"Training completed, saved to existing path {player_path}")
 
     return cur_policy, loss_by_iter
 
@@ -183,7 +191,15 @@ if __name__ == "__main__":
     # device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
     device = "cpu"
     cur_state = torch.zeros((2, BOARD_SIZE, BOARD_SIZE), device=device)
-    final_policy, loss_list = reinforce_algo(cur_state, self_play=True, num_iter=TRAIN_ITER)
+    my_opponent = FirstOpponent()
+    final_policy, loss_list = reinforce_algo(cur_state, 
+                                             self_play=False, 
+                                             player_path=MODELS_DIR / "final_policy_10000.pt", 
+                                             opponent=my_opponent,
+                                             num_iter=TRAIN_ITER)
+    # final_policy, loss_list = reinforce_algo(cur_state, 
+    #                                          self_play=True, 
+    #                                          num_iter=TRAIN_ITER)
     print(f"Total training time is {time.time() - start_time}")
 
     plot_loss_by_iter(loss_list=loss_list)

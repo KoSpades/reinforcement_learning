@@ -353,3 +353,14 @@ To improve the training pipeline's flexbility, we will implement two additional 
 - if not fresh_train and not self-play: we continue training an existing NN and pass in a fixed opponent
 
 This ends up being a lot of work actually, but we can now train against a fixed opponent now.
+
+### Observation on a fully collapse policy
+- We just had a run where we were continuing training from a check point, then then all losses are zero after 10k iters: basically, no training happened.
+- After studying this more: it's because the policy has already fully collapsed, so the log probs and entropy both becomes zero, and there are no more losses to be trained.
+- We will not try to solve this now, instead, let's really move on from the plain REINFORCE to other algorithms.
+
+### Observation on training REINFORCE directly against FirstOpponent
+- Despite throwing about 20K iterations, the loss plot is not changing, just mostly negative. It turns out that the reason is our NN is losing all of its games, so every trajectory/action it took is treated as a negative sign, and REINFORCE is not really introducing any benefits. (i.e, we are not gaining confidence on any winning moves, because we never won.)
+- It's time to stop tuning and move on to new algorithms :)
+
+Before doing actor-critic: let's study and understand the meaning of "add a value head".
