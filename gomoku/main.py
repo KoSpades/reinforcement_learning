@@ -92,12 +92,12 @@ def compute_losses_for_reinforce(episode_data, self_play, regular_beta, device):
         policy_reward_white = our_reward if our_color == 1 else 0
 
     if len(black_log_probs):
-        black_loss = -torch.stack(black_log_probs).sum() * policy_reward_black
+        black_loss = -torch.stack(black_log_probs).mean() * policy_reward_black
     else:
         black_loss = torch.tensor(0.0, device=device)
 
     if len(white_log_probs):
-        white_loss = -torch.stack(white_log_probs).sum() * policy_reward_white
+        white_loss = -torch.stack(white_log_probs).mean() * policy_reward_white
     else:
         white_loss = torch.tensor(0.0, device=device)
 
@@ -192,14 +192,14 @@ if __name__ == "__main__":
     device = "cpu"
     cur_state = torch.zeros((2, BOARD_SIZE, BOARD_SIZE), device=device)
     my_opponent = FirstOpponent()
-    final_policy, loss_list = reinforce_algo(cur_state, 
-                                             self_play=False, 
-                                             player_path=MODELS_DIR / "final_policy_10000.pt", 
-                                             opponent=my_opponent,
-                                             num_iter=TRAIN_ITER)
     # final_policy, loss_list = reinforce_algo(cur_state, 
-    #                                          self_play=True, 
+    #                                          self_play=False, 
+    #                                          player_path=MODELS_DIR / "final_policy_10000.pt", 
+    #                                          opponent=my_opponent,
     #                                          num_iter=TRAIN_ITER)
+    final_policy, loss_list = reinforce_algo(cur_state, 
+                                             self_play=True, 
+                                             num_iter=TRAIN_ITER)
     print(f"Total training time is {time.time() - start_time}")
 
     plot_loss_by_iter(loss_list=loss_list)

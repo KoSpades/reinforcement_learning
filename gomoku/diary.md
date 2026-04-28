@@ -369,10 +369,16 @@ Before doing actor-critic: let's study and understand the meaning of "add a valu
 
 ### Connection between the actor-critic algorithm and the value head
 1. The high level idea of "actor-critic" is that there is an Actor: who looks at the current state and chooses an action, and a Critic: who look at the current state or state-action pair and estimates how good it is.
-2. Current, our NN is outputting a logits over the actions, this is precisely the "Actor portion".
-3. We can modify the output layer to also output a scalar value (i.e., the value head), that serves as the Critic for estimating how good the current board state is.
-4. Is it a good practice to add the value head in the same NN?
+- For actor: We define the policy loss in a way to increase the likelihood of "good actions".
+- For critic: We define the value loss in a way to better predict the state values (i.e, predicted value should be close to the actual value.)
+3. Current, our NN is outputting a logits over the actions, this is precisely the "Actor portion".
+4. We can modify the output layer to also output a scalar value (i.e., the value head), that serves as the Critic for estimating how good the current board state is.
+5. Is it a good practice to add the value head in the same NN?
 - Yes, and the reason is that the policy and value needs many of the same features about the current board (e.g. where the stones are, open threes/fours, etc.), so having a common NN makes sense and is more efficient.
 - This is the same setup as used in AlphaZero.
 
-We have clarified the conceptual part of actor-critic, time to move onto implementation! This should be our next big milestone.
+We have clarified the conceptual part of actor-critic, time to move onto implementation! This should be our next big milestone. To achieve this, our next steps include:
+
+1. Understand how the value head is added, and add it.
+2. Write down the actor-critic algorithm by hand.
+3. Translate that to code. 
