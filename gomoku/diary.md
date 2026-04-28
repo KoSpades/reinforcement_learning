@@ -360,7 +360,19 @@ This ends up being a lot of work actually, but we can now train against a fixed 
 - We will not try to solve this now, instead, let's really move on from the plain REINFORCE to other algorithms.
 
 ### Observation on training REINFORCE directly against FirstOpponent
-- Despite throwing about 20K iterations, the loss plot is not changing, just mostly negative. It turns out that the reason is our NN is losing all of its games, so every trajectory/action it took is treated as a negative sign, and REINFORCE is not really introducing any benefits. (i.e, we are not gaining confidence on any winning moves, because we never won.)
+- Despite throwing about 20K iterations, the loss plot is not changing, just mostly negative. It turns out that the reason is our NN is losing all of its games, so every trajectory/action it took is treated as a negative sign, and REINFORCE is not really introducing any benefits. (i.e, we are not gaining confidence on any winning moves, because we never won.) And this seems like a fundamental problem of the algorithm that throwing in more compute won't help.
 - It's time to stop tuning and move on to new algorithms :)
 
 Before doing actor-critic: let's study and understand the meaning of "add a value head".
+
+## 04/27/26
+
+### Connection between the actor-critic algorithm and the value head
+1. The high level idea of "actor-critic" is that there is an Actor: who looks at the current state and chooses an action, and a Critic: who look at the current state or state-action pair and estimates how good it is.
+2. Current, our NN is outputting a logits over the actions, this is precisely the "Actor portion".
+3. We can modify the output layer to also output a scalar value (i.e., the value head), that serves as the Critic for estimating how good the current board state is.
+4. Is it a good practice to add the value head in the same NN?
+- Yes, and the reason is that the policy and value needs many of the same features about the current board (e.g. where the stones are, open threes/fours, etc.), so having a common NN makes sense and is more efficient.
+- This is the same setup as used in AlphaZero.
+
+We have clarified the conceptual part of actor-critic, time to move onto implementation! This should be our next big milestone.
