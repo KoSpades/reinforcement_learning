@@ -123,7 +123,7 @@ def reinforce_algo(start_state,
     """
     if not self_play and opponent is None:
         raise ValueError("Not in self-play mode: must create an opponent.")
-    cur_policy = PolicyNetwork().to(start_state.device)
+    cur_policy, cur_value = PolicyNetwork().to(start_state.device)
     optimizer = torch.optim.Adam(cur_policy.parameters(), lr=learning_rate)
     cur_iter = 0
     if player_path is not None:

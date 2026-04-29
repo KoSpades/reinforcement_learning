@@ -14,6 +14,8 @@ class Player:
 class OurPlayer(Player):
     """
     Our player: who acts strictly according to a NN.
+
+    To ways to initialize this: either from a file, or from a policy directly
     """
 
     def __init__(self, model_path=None, policy=None):
@@ -42,7 +44,8 @@ class OurPlayer(Player):
         policy_state = self._policy_state(state, whose_turn)
         # We randomly sample an action
         if sample:
-            action_logits = self.policy(policy_state.unsqueeze(0).to(self.device)).squeeze(0)
+            action_logits, value = self.policy(policy_state.unsqueeze(0).to(self.device))
+            action_logits = action_logits.squeeze(0)
             occupied_spaces = state.sum(dim=0)
             legal_mask = (occupied_spaces == 0).flatten().to(self.device)
             if not legal_mask.any():
@@ -56,7 +59,8 @@ class OurPlayer(Player):
         # We deterministically pick an action (used in evaluation)
         else:
             with torch.no_grad():
-                action_logits = self.policy(policy_state.unsqueeze(0).to(self.device)).squeeze(0)
+                action_logits, value = self.policy(policy_state.unsqueeze(0).to(self.device))
+                action_logits = action_logits.squeeze(0)
                 occupied_spaces = state.sum(dim=0)
                 legal_mask = (occupied_spaces == 0).flatten().to(self.device)
                 if not legal_mask.any():
@@ -114,7 +118,8 @@ class FirstOpponent(Player):
             policy_state = torch.stack([state[1], state[0]])
 
         with torch.no_grad():
-            action_logits = self.policy(policy_state.unsqueeze(0).to(self.device)).squeeze(0)
+            action_logits, value = self.policy(policy_state.unsqueeze(0).to(self.device))
+            action_logits = action_logits.squeeze(0)
             occupied_spaces = state.sum(dim=0)
             legal_mask = (occupied_spaces == 0).flatten().to(self.device)
             masked_logits = action_logits.masked_fill(~legal_mask, float("-inf"))

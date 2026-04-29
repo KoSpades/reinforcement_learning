@@ -69,7 +69,8 @@ def select_policy_action(policy, state, policy_turn):
         policy_state = torch.stack([state[1], state[0]])
 
     with torch.no_grad():
-        action_logits = policy(policy_state.unsqueeze(0)).squeeze(0)
+        action_logits, value = policy(policy_state.unsqueeze(0))
+        action_logits = action_logits.squeeze(0)
         occupied_spaces = state.sum(dim=0)
         legal_mask = (occupied_spaces == 0).flatten()
         if not legal_mask.any():

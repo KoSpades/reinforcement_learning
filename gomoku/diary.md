@@ -367,6 +367,10 @@ Before doing actor-critic: let's study and understand the meaning of "add a valu
 
 ## 04/27/26
 
+### What are the limitations of plain policy gradient methods? (e.g. REINFORCE)?
+- It does not make efficient use of data, when the reward is sparse.
+- Suppose we are learning how to talk, and a policy takes 1 step forward and 2 steps back, plain policy gradient will not be able to understand that "one step forward" is making progress, due to reward sparsity.
+
 ### Connection between the actor-critic algorithm and the value head
 1. The high level idea of "actor-critic" is that there is an Actor: who looks at the current state and chooses an action, and a Critic: who look at the current state or state-action pair and estimates how good it is.
 - For actor: We define the policy loss in a way to increase the likelihood of "good actions".
@@ -376,9 +380,19 @@ Before doing actor-critic: let's study and understand the meaning of "add a valu
 5. Is it a good practice to add the value head in the same NN?
 - Yes, and the reason is that the policy and value needs many of the same features about the current board (e.g. where the stones are, open threes/fours, etc.), so having a common NN makes sense and is more efficient.
 - This is the same setup as used in AlphaZero.
+6. Concept of advantage:
+- A(π, s, a) = Q(π, s, a) - V(π, s): how much better is it to take action a at state s than average
+- This will be useful in actor-critic.
 
 We have clarified the conceptual part of actor-critic, time to move onto implementation! This should be our next big milestone. To achieve this, our next steps include:
 
 1. Understand how the value head is added, and add it.
 2. Write down the actor-critic algorithm by hand.
 3. Translate that to code. 
+
+## 04/28/26
+
+### Adding the value head
+- Step 1: Move the Conv2d layers out as a common "feature extraction layer".
+- Step 2: create two additional NN.sequential() inside the network: one for outputting the policy (with output_dim 9 by 9), and one for outputting the value (with output_dim 1).
+- Step 3: To make the value match the range of our reward (1 and -1), we will apply a tanh in the value head.
