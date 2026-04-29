@@ -396,3 +396,21 @@ We have clarified the conceptual part of actor-critic, time to move onto impleme
 - Step 1: Move the Conv2d layers out as a common "feature extraction layer".
 - Step 2: create two additional NN.sequential() inside the network: one for outputting the policy (with output_dim 9 by 9), and one for outputting the value (with output_dim 1).
 - Step 3: To make the value match the range of our reward (1 and -1), we will apply a tanh in the value head.
+
+This is finished.
+
+### The Actor-Critic algorithm on a high level
+
+1. Generate an episode
+- sample action from the actor
+- store information including the log probs, entropies, and predicted values
+
+2. Compute per-step losses
+- actor loss: update the policy using advantage. We will do (G - predicted state value) as the advantage, rather than doing a prediction for the Q(S, A) pair. This is because in games like Gomoku, we really only get a meaningful reward at the end. This is also the AlphaZero style approach.
+- critic loss: update the (state) value function using squared error between predicted value (output from the NN) and final reward G. This is intuitive.
+- entropy loss: same calculation as before.
+
+3. Take the average over all the losses and do gradient updates once for the entire episode.
+- Note: this is different from the TD style update where we update after every step. (so our NN can change even during the middle of generating a trajectory.) It looks like updating once after an episode is a sensible practice.
+
+We are ready to code! :) 
