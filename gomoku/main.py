@@ -21,6 +21,9 @@ def generate_episode_for_reinforce(start_state, self_play, our_player, opponent,
     black_log_probs = []
     white_log_probs = []
     trainable_entropies = []
+    black_predicted = []
+    white_predicted = []
+    # cur_turn: 0 for black, 1 for white.
     cur_turn = 0
     if random_start:
         total_random_moves = random.randint(2,  2)
@@ -32,22 +35,29 @@ def generate_episode_for_reinforce(start_state, self_play, our_player, opponent,
     our_color = random.randint(0, 1)
     our_turn = (cur_turn == our_color)
     while (True):
+        # In this case, we are sampling our the(S, A)-pairs for training the NN
+        # This happens under two scenarios: it's our own turn (rather than a fixed opponent), or if we are doing self-play
         if our_turn or self_play:
             active_player = our_player if our_turn else opponent
-            cur_action, cur_action_log_prob, cur_entropy = active_player.select_action(cur_state, cur_turn, sample=True)
+            cur_action, cur_action_log_prob, cur_entropy, cur_value = active_player.select_action(cur_state, cur_turn, sample=True)
             if cur_action == -1:
                 # In this case, we got a draw, and there's nothing to train, so we just ignore this episode.
                 episode_history = []
                 black_log_probs = []
                 white_log_probs = []
                 trainable_entropies = []
+                black_predicted = []
+                white_predicted = []
                 break
             episode_history.append((cur_state, cur_action))
             if cur_turn == 0:
                 black_log_probs.append(cur_action_log_prob)
+                black_predicted.append(cur_value)
             else:
                 white_log_probs.append(cur_action_log_prob)
+                white_predicted.append(cur_value)
             trainable_entropies.append(cur_entropy)
+        # In this case: the "action" is just for rolling out the environment, not used for updating model weights.
         else:
             cur_action = opponent.select_action(cur_state, cur_turn)
             if cur_action == -1:
@@ -55,6 +65,8 @@ def generate_episode_for_reinforce(start_state, self_play, our_player, opponent,
                 black_log_probs = []
                 white_log_probs = []
                 trainable_entropies = []
+                black_predicted = []
+                white_predicted = []
                 break
         next_state = step(cur_state, cur_action, cur_turn)
         # Checking for termination
@@ -73,6 +85,8 @@ def generate_episode_for_reinforce(start_state, self_play, our_player, opponent,
         "black_log_probs": black_log_probs,
         "white_log_probs": white_log_probs,
         "trainable_entropies": trainable_entropies,
+        "black_predicted": black_predicted,
+        "white_predicted": white_predicted,
         "our_color": our_color,
     }
 
@@ -82,9 +96,13 @@ def compute_losses_for_reinforce(episode_data, self_play, regular_beta, device):
     black_log_probs = episode_data["black_log_probs"]
     white_log_probs = episode_data["white_log_probs"]
 
+    # Case 1: self-play
+    # both black and white side should get a reward
     if self_play:
         policy_reward_black = 1 if winner == 0 else -1
         policy_reward_white = -policy_reward_black
+    # Case 2: fixed opponent
+    # we shall only use OUR reward
     else:
         our_color = episode_data["our_color"]
         our_reward = 1 if winner == our_color else -1
@@ -123,7 +141,7 @@ def reinforce_algo(start_state,
     """
     if not self_play and opponent is None:
         raise ValueError("Not in self-play mode: must create an opponent.")
-    cur_policy, _ = PolicyNetwork().to(start_state.device)
+    cur_policy = PolicyNetwork().to(start_state.device)
     optimizer = torch.optim.Adam(cur_policy.parameters(), lr=learning_rate)
     cur_iter = 0
     if player_path is not None:

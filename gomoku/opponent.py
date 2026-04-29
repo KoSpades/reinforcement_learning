@@ -44,18 +44,19 @@ class OurPlayer(Player):
         policy_state = self._policy_state(state, whose_turn)
         # We randomly sample an action
         if sample:
-            action_logits, value = self.policy(policy_state.unsqueeze(0).to(self.device))
+            action_logits, cur_value = self.policy(policy_state.unsqueeze(0).to(self.device))
             action_logits = action_logits.squeeze(0)
+            cur_value = cur_value.squeeze()
             occupied_spaces = state.sum(dim=0)
             legal_mask = (occupied_spaces == 0).flatten().to(self.device)
             if not legal_mask.any():
-                return -1, None, None
+                return -1, None, None, None
             masked_logits = action_logits.masked_fill(~legal_mask, float("-inf"))
             action_dist = torch.distributions.Categorical(logits=masked_logits)
             cur_action = action_dist.sample()
             cur_action_log_prob = action_dist.log_prob(cur_action)
             cur_entropy = action_dist.entropy()
-            return int(cur_action.item()), cur_action_log_prob, cur_entropy
+            return int(cur_action.item()), cur_action_log_prob, cur_entropy, cur_value
         # We deterministically pick an action (used in evaluation)
         else:
             with torch.no_grad():

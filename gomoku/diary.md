@@ -410,7 +410,13 @@ This is finished.
 - critic loss: update the (state) value function using squared error between predicted value (output from the NN) and final reward G. This is intuitive.
 - entropy loss: same calculation as before.
 
-3. Take the average over all the losses and do gradient updates once for the entire episode.
+3. Sum over the average of all the losses and do gradient updates once for the entire episode.
 - Note: this is different from the TD style update where we update after every step. (so our NN can change even during the middle of generating a trajectory.) It looks like updating once after an episode is a sensible practice.
 
 We are ready to code! :) 
+
+## 04/29/26
+
+Finished step 1: updating generate_episode() by tracking the predicted values.
+
+For step 2: Let's first write the code. There seems to be a deeper question here though: since actor loss, critic loss, and regularized loss are summed together, if any one of them is not on the same scale as others, it will dominate/overshadow the others. This seems a bit tricky to handle, and we need a solution.
