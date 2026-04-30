@@ -9,7 +9,7 @@ from pathlib import Path
 from utils import check_win_cond, get_random_legal_move, step
 from model import PolicyNetwork
 from opponent import *
-from config import BOARD_SIZE, TRAIN_ITER, MODELS_DIR, PLOTS_DIR
+from config import BOARD_SIZE, TRAIN_ITER, MODELS_DIR, TRAINING_ALGO, PLOTS_DIR
     
 
 def generate_episode_for_reinforce(start_state, self_play, our_player, opponent, random_start=True):
@@ -91,10 +91,12 @@ def generate_episode_for_reinforce(start_state, self_play, our_player, opponent,
     }
 
 
-def compute_losses_for_reinforce(episode_data, self_play, regular_beta, device):
+def compute_total_losses(episode_data, self_play, training_algo, regular_beta, device):
     winner = episode_data["episode_history"][-1][1]
     black_log_probs = episode_data["black_log_probs"]
     white_log_probs = episode_data["white_log_probs"]
+    black_predicted = episode_data["black_predicted"]
+    white_predicted = episode_data["white_predicted"]
 
     # Case 1: self-play
     # both black and white side should get a reward
@@ -109,33 +111,67 @@ def compute_losses_for_reinforce(episode_data, self_play, regular_beta, device):
         policy_reward_black = our_reward if our_color == 0 else 0
         policy_reward_white = our_reward if our_color == 1 else 0
 
-    if len(black_log_probs):
-        black_loss = -torch.stack(black_log_probs).mean() * policy_reward_black
-    else:
-        black_loss = torch.tensor(0.0, device=device)
+    # First: calculate the actor loss
 
-    if len(white_log_probs):
-        white_loss = -torch.stack(white_log_probs).mean() * policy_reward_white
+    if len(black_log_probs) and training_algo == "reinforce":
+        black_log_probs = torch.stack(black_log_probs)
+        black_actor_loss = -black_log_probs.mean() * policy_reward_black
+    elif len(black_log_probs) and training_algo == "actor_critic":
+        black_log_probs = torch.stack(black_log_probs)
+        black_predicted = torch.stack(black_predicted)
+        black_advantage = policy_reward_black - black_predicted.detach()
+        black_actor_loss = -(black_log_probs * black_advantage).mean()
     else:
-        white_loss = torch.tensor(0.0, device=device)
+        black_actor_loss = torch.tensor(0.0, device=device)
 
-    total_loss = black_loss + white_loss
+    if len(white_log_probs) and training_algo == "reinforce":
+        white_log_probs = torch.stack(white_log_probs)
+        white_actor_loss = -white_log_probs.mean() * policy_reward_white
+    elif len(white_log_probs) and training_algo == "actor_critic":
+        white_log_probs = torch.stack(white_log_probs)
+        white_predicted = torch.stack(white_predicted)
+        white_advantage = policy_reward_white - white_predicted.detach()
+        white_actor_loss = -(white_log_probs * white_advantage).mean()
+    else:
+        white_actor_loss = torch.tensor(0.0, device=device)
+
+    actor_loss = black_actor_loss + white_actor_loss
+
+    # Second: calculate the critic loss
+    if len(black_predicted) and training_algo == "actor_critic":
+        if not torch.is_tensor(black_predicted):
+            black_predicted = torch.stack(black_predicted)
+        black_critic_loss = ((black_predicted - policy_reward_black)**2).mean()
+    else:
+        black_critic_loss = torch.tensor(0.0, device=device)
+
+    if len(white_predicted) and training_algo == "actor_critic":
+        if not torch.is_tensor(white_predicted):
+            white_predicted = torch.stack(white_predicted)
+        white_critic_loss = ((white_predicted - policy_reward_white)**2).mean()
+    else:
+        white_critic_loss = torch.tensor(0.0, device=device)
+
+    critic_loss = black_critic_loss + white_critic_loss
+
+    # Finally: calculate the entropy loss
     trainable_entropies = episode_data["trainable_entropies"]
     if len(trainable_entropies):
-        regularized_loss = total_loss - regular_beta * torch.stack(trainable_entropies).mean()
+        entropy_loss = -regular_beta * torch.stack(trainable_entropies).mean()
     else:
-        regularized_loss = total_loss
+        entropy_loss = torch.tensor(0.0, device=device)
 
-    return total_loss, regularized_loss
+    return actor_loss, critic_loss, entropy_loss
 
 
-def reinforce_algo(start_state, 
-                   self_play,
-                   player_path=None,
-                   opponent=None,
-                   num_iter=1000, 
-                   learning_rate=1e-3, 
-                   regular_beta=0.01):
+def rl_training_loop(start_state, 
+                     self_play,
+                     training_algo,
+                     player_path=None,
+                     opponent=None,
+                     num_iter=1000, 
+                     learning_rate=1e-3, 
+                     regular_beta=0.01):
     """
     Only when self_play is True do we want to train the opponent as well.
     """
@@ -161,17 +197,27 @@ def reinforce_algo(start_state,
 
         # perform updates
         if len(cur_episode):
-            total_loss, regularized_loss = compute_losses_for_reinforce(
+            actor_loss, critic_loss, entropy_loss = compute_total_losses(
                 episode_data=episode_data,
                 self_play=self_play,
+                training_algo=training_algo,
                 regular_beta=regular_beta,
                 device=start_state.device,
             )
+            if training_algo == "reinforce":
+                unregularized_loss = actor_loss
+                total_loss = actor_loss + entropy_loss
+            elif training_algo == "actor_critic":
+                unregularized_loss = actor_loss + critic_loss
+                total_loss = actor_loss + critic_loss + entropy_loss
+            else:
+                raise ValueError(f"Training algorithm {training_algo} not implemented yet!")
+            
             optimizer.zero_grad()
-            regularized_loss.backward()
+            total_loss.backward()
             optimizer.step()
 
-            loss_by_iter.append(total_loss)
+            loss_by_iter.append(unregularized_loss.detach())
             cur_iter += 1
 
     # Saving the model and optimizer for later, cotinuous training if needed
@@ -212,12 +258,14 @@ if __name__ == "__main__":
     my_opponent = FirstOpponent()
     # final_policy, loss_list = reinforce_algo(cur_state, 
     #                                          self_play=False, 
+    #                                          training_algo=TRAINING_ALGO,
     #                                          player_path=MODELS_DIR / "final_policy_10000.pt", 
     #                                          opponent=my_opponent,
     #                                          num_iter=TRAIN_ITER)
-    final_policy, loss_list = reinforce_algo(cur_state, 
-                                             self_play=True, 
-                                             num_iter=TRAIN_ITER)
+    final_policy, loss_list = rl_training_loop(cur_state, 
+                                               self_play=True, 
+                                               training_algo=TRAINING_ALGO,
+                                               num_iter=TRAIN_ITER)
     print(f"Total training time is {time.time() - start_time}")
 
     plot_loss_by_iter(loss_list=loss_list)

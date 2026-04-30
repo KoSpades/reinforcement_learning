@@ -420,3 +420,9 @@ We are ready to code! :)
 Finished step 1: updating generate_episode() by tracking the predicted values.
 
 For step 2: Let's first write the code. There seems to be a deeper question here though: since actor loss, critic loss, and regularized loss are summed together, if any one of them is not on the same scale as others, it will dominate/overshadow the others. This seems a bit tricky to handle, and we need a solution.
+
+### Quick omment on calculating the actor loss
+
+To calculate the actor: we take the pairwise multiplication between the action log likelihood and the advantage (G - predicted), then take the mean.
+
+Actor-critic is now fully implemented :) Next we will run some training on it and see what we find. We will also look into how to scale the critic loss to address the observation above.
