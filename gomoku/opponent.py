@@ -2,7 +2,7 @@ from pathlib import Path
 
 import torch
 
-from config import MODELS_DIR
+from config import CURRENT_MODELS_DIR
 from model import PolicyNetwork
 from utils import check_win_cond, get_random_legal_move, step
 
@@ -87,13 +87,13 @@ class FirstOpponent(Player):
     Opponent number 1! With the following heuristic:
     - If it can win, it wins.
     - Elif: opponent has 4 in a row, it blocks it.
-    - Else: we use the weights from a freezed NN (models/freeze_10000_zero.pt) to pick a move.
+    - Else: we use the weights from a freezed NN in the current algorithm's model directory to pick a move.
 
     The goal is to train against this opponent, and we will get higher and higher quality freezed NN's.
     """
 
     def __init__(self, model_path=None):
-        model_path = Path(model_path) if model_path is not None else MODELS_DIR / "freeze_10000_zero.pt"
+        model_path = Path(model_path) if model_path is not None else CURRENT_MODELS_DIR / "freeze_10000_zero.pt"
         self.device = torch.device("cpu")
         self.policy = PolicyNetwork().to(self.device)
         checkpoint = torch.load(model_path, map_location=self.device)

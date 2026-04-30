@@ -9,7 +9,7 @@ from pathlib import Path
 from utils import check_win_cond, get_random_legal_move, step
 from model import PolicyNetwork
 from opponent import *
-from config import BOARD_SIZE, TRAIN_ITER, MODELS_DIR, TRAINING_ALGO, PLOTS_DIR
+from config import BOARD_SIZE, TRAIN_ITER, TRAINING_ALGO, PLOTS_DIR, MODEL_DIRS_BY_ALGO
     
 
 def generate_episode_for_reinforce(start_state, self_play, our_player, opponent, random_start=True):
@@ -221,14 +221,15 @@ def rl_training_loop(start_state,
             cur_iter += 1
 
     # Saving the model and optimizer for later, cotinuous training if needed
-    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    model_dir = MODEL_DIRS_BY_ALGO[training_algo]
+    model_dir.mkdir(parents=True, exist_ok=True)
 
     if player_path is None:
         torch.save({
             "model": cur_policy.state_dict(),
             "optimizer": optimizer.state_dict()
-        }, MODELS_DIR / f"final_policy_{TRAIN_ITER}.pt")
-        print(f"Training completed, saved to new path final_policy_{TRAIN_ITER}.pt")
+        }, model_dir / f"final_policy_{TRAIN_ITER}.pt")
+        print(f"Training completed, saved to new path {model_dir / f'final_policy_{TRAIN_ITER}.pt'}")
     else:
         torch.save({
             "model": cur_policy.state_dict(),
@@ -255,11 +256,11 @@ if __name__ == "__main__":
     # device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
     device = "cpu"
     cur_state = torch.zeros((2, BOARD_SIZE, BOARD_SIZE), device=device)
-    my_opponent = FirstOpponent()
-    # final_policy, loss_list = reinforce_algo(cur_state, 
+    # my_opponent = FirstOpponent()
+    # final_policy, loss_list = rl_training_loop(cur_state, 
     #                                          self_play=False, 
     #                                          training_algo=TRAINING_ALGO,
-    #                                          player_path=MODELS_DIR / "final_policy_10000.pt", 
+    #                                          player_path=MODEL_DIRS_BY_ALGO[TRAINING_ALGO] / "final_policy_10000.pt", 
     #                                          opponent=my_opponent,
     #                                          num_iter=TRAIN_ITER)
     final_policy, loss_list = rl_training_loop(cur_state, 
