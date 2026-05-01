@@ -421,8 +421,55 @@ Finished step 1: updating generate_episode() by tracking the predicted values.
 
 For step 2: Let's first write the code. There seems to be a deeper question here though: since actor loss, critic loss, and regularized loss are summed together, if any one of them is not on the same scale as others, it will dominate/overshadow the others. This seems a bit tricky to handle, and we need a solution.
 
-### Quick omment on calculating the actor loss
+### Quick comment on calculating the actor loss
 
 To calculate the actor: we take the pairwise multiplication between the action log likelihood and the advantage (G - predicted), then take the mean.
 
 Actor-critic is now fully implemented :) Next we will run some training on it and see what we find. We will also look into how to scale the critic loss to address the observation above.
+
+## 04/30/26
+
+We ran self-play, actor-critic from scratch, and it looks pretty good from the UI side.
+- Making mostly connected pieces.
+- WR: random 99%, 1000 RE 94%, 1000 AC 98%, and Hueristic 1000 AC 37%. This is the first time we got some wins against the heuristic opponent. 
+- There is no entropy collapse as of yet, and the losses are not really going down that much. 
+
+Maybe this suggests we can try play against a fixed opponent? Let's test that.
+
+We ran another 5000 iter, training against the Fixed opponent with 1000 iter. Something crazy:
+- WR: random 1, 1000 AC 60%, and Hueristic 1000 AC 73%.
+- It actually performed worse against the 1000 AC, but a lot better against Heuristic. Why? Are we fitting ourselves to Heuristic? So what happens if we now train against 1000 AC again? Let's test that.
+- We did another 5000 iter against 1000 AC, now we got 97%, but 0 against Heuristic again! We really are overfitting to our opponent. Is this a common thing? Does this mean if we just do like another 1000 iter on FixedOpponent, we will increase the WR again, but WR against 1000 AC will drop again? If that's the case, how do we train a generally strong agent?
+
+Some truly amazing stuff: we did another 1000 iter, and now our WR: 99 Rand, 97 1000AC, 88 Fixed1000. (Let's freeze this: and keep doing self-play.)
+
+We then did 1000 iter of self-play, and our WR against Fixed1000 collapsed to 2. Is it because we have "forgot about the playstyle" of Fixed? Let's keep training.
+
+Some very bizarre behaviour: did another 10K iter. Now it's 9 against 1000AC, 99 against 1000RE, 0 against Fixed1000AC, and 50 against Fixed1000RE. I find this puzzling, is it learning to be more general? But then why suddenly the huge drop in performance against 1000AC?
+
+(And, if we are learning something new, but forgetting about something, is our network too shallow?)
+
+Another observation: our losses are consistently between 4 to 6, with no trend of going down. Why is it capped below at 4?
+
+Here's something I find quite cool: another 10K of self-play. 98 against Rand/1000AC/1000RE, 45 against FixedAC, 8 against FixedRE. (Still a bit slow to make the 5 in a row, however. Let's really look into how to make the NN learn this, without hand coding this heuristic.)
+
+Okay, unforunately, after another 10K, back to close to 0 against Fixed opponents. Looks like we did not get emerging performance after all. Time to step piling up the iterations, and start reflecting on the all the interesting observations/questions above.
+
+
+
+## Collection of issues that we have observed
+
+1. Value/Critic Collapase
+- After close investigation into the value function itself, we are basically outputting -1 for EVERY SINGLE value prediction. This is clearly wrong: we will look closely into this issue and try to address this.
+
+2. Opponent Overfitting
+- Yes, this is a real thing. If we keep playing against a fixed opponent, instead of learning a Gomoku policy that's generally strong, we learn a best response to the opponent's distribution.
+
+3. Catastrophic Forgetting and Continual Learning
+- Continual learning refers to the process where a model learns from a continuous stream of data over time, trying to acquire new knowledge without forgetting what it has learned.
+- When we train against one opponent and completely loses performance against a previous one, it is one example of forgetting. Likely due to the network performing updates to handle the new opponent distribution, but overwrites useful behaviour against previous ones.
+- It can a result of: training distribution too narrow; no "pool of opponents"; etc.
+
+4. Credit assignment
+- Even with actor-critic, our reward is terminal. And it may not learn the finishing move (from 4 to 5) if we don't show it enough trajectories that immediate win matters.
+

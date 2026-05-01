@@ -9,7 +9,12 @@ from pathlib import Path
 from utils import check_win_cond, get_random_legal_move, step
 from model import PolicyNetwork
 from opponent import *
-from config import BOARD_SIZE, TRAIN_ITER, TRAINING_ALGO, PLOTS_DIR, MODEL_DIRS_BY_ALGO
+from config import (BOARD_SIZE, 
+                    TRAIN_ITER, 
+                    TRAINING_ALGO, 
+                    PLOTS_DIR, 
+                    MODEL_DIRS_BY_ALGO, 
+                    ACTOR_CRITIC_MODELS_DIR)
     
 
 def generate_episode_for_reinforce(start_state, self_play, our_player, opponent, random_start=True):
@@ -164,6 +169,56 @@ def compute_total_losses(episode_data, self_play, training_algo, regular_beta, d
     return actor_loss, critic_loss, entropy_loss
 
 
+def build_loss_bookkeeping(episode_data, self_play, training_algo, device):
+    winner = episode_data["episode_history"][-1][1]
+    black_predicted = episode_data["black_predicted"]
+    white_predicted = episode_data["white_predicted"]
+
+    if self_play:
+        policy_reward_black = 1 if winner == 0 else -1
+        policy_reward_white = -policy_reward_black
+    else:
+        our_color = episode_data["our_color"]
+        our_reward = 1 if winner == our_color else -1
+        policy_reward_black = our_reward if our_color == 0 else 0
+        policy_reward_white = our_reward if our_color == 1 else 0
+
+    if len(black_predicted):
+        black_predicted_tensor = torch.stack(black_predicted)
+        black_value_mean = black_predicted_tensor.mean().detach()
+        black_predicted_values = black_predicted_tensor.detach().cpu().tolist()
+        if training_algo == "actor_critic":
+            black_critic_loss = ((black_predicted_tensor - policy_reward_black) ** 2).mean().detach()
+        else:
+            black_critic_loss = torch.tensor(0.0, device=device)
+    else:
+        black_value_mean = torch.tensor(0.0, device=device)
+        black_predicted_values = []
+        black_critic_loss = torch.tensor(0.0, device=device)
+
+    if len(white_predicted):
+        white_predicted_tensor = torch.stack(white_predicted)
+        white_value_mean = white_predicted_tensor.mean().detach()
+        white_predicted_values = white_predicted_tensor.detach().cpu().tolist()
+        if training_algo == "actor_critic":
+            white_critic_loss = ((white_predicted_tensor - policy_reward_white) ** 2).mean().detach()
+        else:
+            white_critic_loss = torch.tensor(0.0, device=device)
+    else:
+        white_value_mean = torch.tensor(0.0, device=device)
+        white_predicted_values = []
+        white_critic_loss = torch.tensor(0.0, device=device)
+
+    return {
+        "black_value_mean": black_value_mean,
+        "white_value_mean": white_value_mean,
+        "black_critic_loss": black_critic_loss,
+        "white_critic_loss": white_critic_loss,
+        "black_predicted_values": black_predicted_values,
+        "white_predicted_values": white_predicted_values,
+    }
+
+
 def rl_training_loop(start_state, 
                      self_play,
                      training_algo,
@@ -187,7 +242,17 @@ def rl_training_loop(start_state,
     our_player = OurPlayer(policy=cur_policy)
     if self_play:
         opponent = OurPlayer(policy=cur_policy)
-    loss_by_iter = []
+    actor_loss_by_iter = []
+    critic_loss_by_iter = []
+    entropy_loss_by_iter = []
+    debug_bookkeeping = {
+        "black_value_mean": [],
+        "white_value_mean": [],
+        "black_critic_loss": [],
+        "white_critic_loss": [],
+        "black_predicted_values": [],
+        "white_predicted_values": [],
+    }
     while (cur_iter < num_iter):
         if (cur_iter % 100 == 0):
             print(f"Current iter: {cur_iter}")
@@ -204,11 +269,15 @@ def rl_training_loop(start_state,
                 regular_beta=regular_beta,
                 device=start_state.device,
             )
+            bookkeeping = build_loss_bookkeeping(
+                episode_data=episode_data,
+                self_play=self_play,
+                training_algo=training_algo,
+                device=start_state.device,
+            )
             if training_algo == "reinforce":
-                unregularized_loss = actor_loss
                 total_loss = actor_loss + entropy_loss
             elif training_algo == "actor_critic":
-                unregularized_loss = actor_loss + critic_loss
                 total_loss = actor_loss + critic_loss + entropy_loss
             else:
                 raise ValueError(f"Training algorithm {training_algo} not implemented yet!")
@@ -217,7 +286,14 @@ def rl_training_loop(start_state,
             total_loss.backward()
             optimizer.step()
 
-            loss_by_iter.append(unregularized_loss.detach())
+            actor_loss_by_iter.append(actor_loss.detach())
+            critic_loss_by_iter.append(critic_loss.detach())
+            entropy_loss_by_iter.append(entropy_loss.detach())
+            for key, value in bookkeeping.items():
+                if key in {"black_predicted_values", "white_predicted_values"}:
+                    debug_bookkeeping[key].extend(value)
+                else:
+                    debug_bookkeeping[key].append(value)
             cur_iter += 1
 
     # Saving the model and optimizer for later, cotinuous training if needed
@@ -237,17 +313,53 @@ def rl_training_loop(start_state,
         }, player_path)
         print(f"Training completed, saved to existing path {player_path}")
 
-    return cur_policy, loss_by_iter
+    return cur_policy, {
+        "actor": actor_loss_by_iter,
+        "critic": critic_loss_by_iter,
+        "entropy": entropy_loss_by_iter,
+        "bookkeeping": debug_bookkeeping,
+    }
 
 
-def plot_loss_by_iter(loss_list):
-    loss_list = [loss.item() if torch.is_tensor(loss) else loss for loss in loss_list]
-    plt.plot(range(len(loss_list)), loss_list)
+def plot_loss_by_iter(loss_by_type):
+    actor_loss = [loss.item() if torch.is_tensor(loss) else loss for loss in loss_by_type["actor"]]
+    critic_loss = [loss.item() if torch.is_tensor(loss) else loss for loss in loss_by_type["critic"]]
+    entropy_loss = [loss.item() if torch.is_tensor(loss) else loss for loss in loss_by_type["entropy"]]
+
+    plt.figure()
+    plt.plot(range(len(actor_loss)), actor_loss, label="Actor Loss")
+    plt.plot(range(len(critic_loss)), critic_loss, label="Critic Loss")
+    plt.plot(range(len(entropy_loss)), entropy_loss, label="Entropy Loss")
     plt.xlabel("Iteration")
     plt.ylabel("Loss")
     plt.title("Training Loss")
+    plt.legend()
     PLOTS_DIR.mkdir(parents=True, exist_ok=True)
     plt.savefig(PLOTS_DIR / f"loss_curve_{TRAIN_ITER}.png", dpi=200, bbox_inches="tight")
+
+
+def inspect_critic_bookkeeping(loss_by_type):
+    """
+    For debuggin: For all episodes in the entire training run, print out the 1, 25, 50, 75, 99 percentile predicted value.
+    """
+    bookkeeping = loss_by_type["bookkeeping"]
+
+    black_predicted_values = bookkeeping["black_predicted_values"]
+    white_predicted_values = bookkeeping["white_predicted_values"]
+
+    def _print_percentiles(label, values):
+        if not values:
+            print(f"{label}: no samples")
+            return
+        values_tensor = torch.tensor(values, dtype=torch.float32)
+        q1, q25, q50, q75, q99 = torch.quantile(values_tensor, torch.tensor([0.05, 0.25, 0.5, 0.75, 0.99]))
+        print(
+            f"{label}: p1={q1.item():.4f}, p25={q25.item():.4f}, median={q50.item():.4f}, p75={q75.item():.4f}, p99={q99.item():.4f}"
+        )
+
+    print("------ Predicted Value Percentiles ------")
+    _print_percentiles("black_predicted", black_predicted_values)
+    _print_percentiles("white_predicted", white_predicted_values)
 
 
 if __name__ == "__main__":
@@ -256,17 +368,19 @@ if __name__ == "__main__":
     # device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
     device = "cpu"
     cur_state = torch.zeros((2, BOARD_SIZE, BOARD_SIZE), device=device)
-    # my_opponent = FirstOpponent()
-    # final_policy, loss_list = rl_training_loop(cur_state, 
-    #                                          self_play=False, 
-    #                                          training_algo=TRAINING_ALGO,
-    #                                          player_path=MODEL_DIRS_BY_ALGO[TRAINING_ALGO] / "final_policy_10000.pt", 
-    #                                          opponent=my_opponent,
-    #                                          num_iter=TRAIN_ITER)
-    final_policy, loss_list = rl_training_loop(cur_state, 
-                                               self_play=True, 
-                                               training_algo=TRAINING_ALGO,
-                                               num_iter=TRAIN_ITER)
+    my_opponent = FirstOpponent(ACTOR_CRITIC_MODELS_DIR / "final_policy_1000.pt")
+    # final_policy, loss_by_type = rl_training_loop(cur_state, 
+    #                                            self_play=False, 
+    #                                            training_algo=TRAINING_ALGO,
+    #                                            player_path=MODEL_DIRS_BY_ALGO[TRAINING_ALGO] / "final_policy_10000.pt", 
+    #                                            opponent=my_opponent,
+    #                                            num_iter=TRAIN_ITER)
+    final_policy, loss_by_type = rl_training_loop(cur_state, 
+                                                  self_play=True, 
+                                                  training_algo=TRAINING_ALGO,
+                                                  player_path=MODEL_DIRS_BY_ALGO[TRAINING_ALGO] / "final_policy_10000.pt",
+                                                  num_iter=TRAIN_ITER)
     print(f"Total training time is {time.time() - start_time}")
 
-    plot_loss_by_iter(loss_list=loss_list)
+    plot_loss_by_iter(loss_by_type=loss_by_type)
+    inspect_critic_bookkeeping(loss_by_type=loss_by_type)

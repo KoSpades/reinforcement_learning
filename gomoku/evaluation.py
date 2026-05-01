@@ -1,6 +1,6 @@
 from utils import get_random_legal_move, step, check_win_cond
 from opponent import RandomOpponent, FirstOpponent, OurPlayer
-from config import BOARD_SIZE, CURRENT_MODELS_DIR
+from config import BOARD_SIZE, REINFORCE_MODELS_DIR, ACTOR_CRITIC_MODELS_DIR
 
 import random
 import torch
@@ -51,13 +51,24 @@ def calc_win_rate(our_player: OurPlayer, opponent, num_games=100, random_start=T
 
 if __name__ == "__main__":
     print("-----------Evaluation starting-------------")
-    our_player = OurPlayer(CURRENT_MODELS_DIR / "final_policy_1000.pt")
+
+    our_player = OurPlayer(ACTOR_CRITIC_MODELS_DIR / "final_policy_10000.pt")
     our_opponent = RandomOpponent()
     num_wins, num_draws, num_games = calc_win_rate(our_player, our_opponent)
     print(f"Win rate against random: {num_wins / num_games}")
-    our_opponent = OurPlayer(CURRENT_MODELS_DIR / "final_policy_1000.pt")
+
+    our_opponent = OurPlayer(ACTOR_CRITIC_MODELS_DIR / "final_policy_1000.pt")
     num_wins, num_draws, num_games = calc_win_rate(our_player, our_opponent)
     print(f"Win rate against 1000 iter: {num_wins / num_games}")
-    # our_opponent = FirstOpponent()
-    # num_wins, num_draws, num_games = calc_win_rate(our_player, our_opponent)
-    # print(f"Win rate against strong heuristic: {num_wins / num_games}")
+
+    our_opponent = FirstOpponent(ACTOR_CRITIC_MODELS_DIR / "final_policy_1000.pt")
+    num_wins, num_draws, num_games = calc_win_rate(our_player, our_opponent)
+    print(f"Win rate against strong heuristic: {num_wins / num_games}")
+
+    our_opponent = OurPlayer(REINFORCE_MODELS_DIR / "final_policy_1000.pt")
+    num_wins, num_draws, num_games = calc_win_rate(our_player, our_opponent)
+    print(f"Win rate against 1000 iter: {num_wins / num_games}")
+
+    our_opponent = FirstOpponent(REINFORCE_MODELS_DIR / "final_policy_1000.pt")
+    num_wins, num_draws, num_games = calc_win_rate(our_player, our_opponent)
+    print(f"Win rate against strong heuristic: {num_wins / num_games}")
