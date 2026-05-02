@@ -81,6 +81,36 @@ def select_policy_action(policy, state, policy_turn):
         return int(action_dist.sample().item())
 
 
+def analyze_policy_state(policy, state, policy_turn, top_k=3):
+    if policy_turn == 0:
+        policy_state = state
+    else:
+        policy_state = torch.stack([state[1], state[0]])
+
+    with torch.no_grad():
+        action_logits, value = policy(policy_state.unsqueeze(0))
+        action_logits = action_logits.squeeze(0)
+        value = float(value.squeeze().item())
+        occupied_spaces = state.sum(dim=0)
+        legal_mask = (occupied_spaces == 0).flatten()
+        if not legal_mask.any():
+            return [], value
+
+        masked_logits = action_logits.masked_fill(~legal_mask, float("-inf"))
+        action_probs = F.softmax(masked_logits, dim=-1)
+        top_probs, top_actions = torch.topk(action_probs, k=min(top_k, int(legal_mask.sum().item())))
+
+    ranked_moves = []
+    for action, prob in zip(top_actions.tolist(), top_probs.tolist()):
+        ranked_moves.append({
+            "action": action,
+            "row": action // BOARD_SIZE,
+            "col": action % BOARD_SIZE,
+            "prob_pct": round(prob * 100),
+        })
+    return ranked_moves, value
+
+
 def evaluate_outcome(state, last_player, action):
     winner = check_win_cond(state, last_player, action)
     if winner == 0:
@@ -100,23 +130,31 @@ def initialize_game_state(policy, device, player_color):
             "message": "New game. You are Black and move first.",
             "game_over": False,
             "player_color": 0,
+            "next_turn": 0,
+            "analysis": None,
         }
 
-    policy_action = select_policy_action(policy, board, policy_turn=0)
-    if policy_action is None:
+    moves, value = analyze_policy_state(policy, board, policy_turn=0, top_k=3)
+    if not moves:
         return {
             "board": board,
             "message": "Draw.",
             "game_over": True,
             "player_color": 1,
+            "next_turn": None,
+            "analysis": None,
         }
 
-    board = step(board, policy_action, whose_turn=0)
     return {
         "board": board,
-        "message": f"New game. You are White. Policy opened at row {policy_action // BOARD_SIZE}, col {policy_action % BOARD_SIZE}.",
+        "message": "New game. You are White. The policy is about to open as Black.",
         "game_over": False,
         "player_color": 1,
+        "next_turn": 0,
+        "analysis": {
+            "moves": moves,
+            "value": value,
+        },
     }
 
 
@@ -130,6 +168,8 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
         "message": "Choose whether to play Black or White to start a new game.",
         "game_over": True,
         "player_color": None,
+        "next_turn": None,
+        "analysis": None,
     }
 
     template = """
@@ -170,13 +210,8 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
           box-sizing: border-box;
           display: flex;
           flex-direction: column;
-          justify-content: center;
+          justify-content: flex-start;
           padding: 16px 16px 18px;
-        }
-        h1 {
-          margin: 0 0 4px;
-          font-size: clamp(1.85rem, 3.6vw, 2.8rem);
-          letter-spacing: 0.02em;
         }
         p {
           margin: 0 0 10px;
@@ -192,14 +227,24 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
           padding: 16px;
           box-shadow: 0 24px 54px var(--shadow);
           backdrop-filter: blur(10px);
+          display: flex;
+          flex-direction: column;
+          align-items: stretch;
+        }
+        .status-area {
+          display: grid;
+          grid-template-rows: 52px 56px;
+          gap: 12px;
+          margin-bottom: 12px;
+          flex: 0 0 auto;
         }
         .toolbar {
           display: flex;
-          flex-wrap: wrap;
-          justify-content: space-between;
+          flex-wrap: nowrap;
+          justify-content: flex-start;
           align-items: center;
           gap: 10px;
-          margin-bottom: 12px;
+          min-height: 52px;
         }
         .message {
           font-size: 0.96rem;
@@ -208,6 +253,10 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
           border-radius: 999px;
           background: rgba(255, 252, 243, 0.85);
           border: 1px solid rgba(122, 62, 29, 0.12);
+          min-height: 22px;
+          display: flex;
+          align-items: center;
+          overflow: hidden;
         }
         .toolbar button {
           border: 1px solid rgba(0, 0, 0, 0.06);
@@ -225,6 +274,11 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
           background: var(--accent-dark);
           transform: translateY(-1px);
         }
+        .message-row {
+          min-height: 56px;
+          display: flex;
+          align-items: center;
+        }
         .board {
           display: grid;
           grid-template-columns: repeat({{ board_size }}, minmax(0, 1fr));
@@ -232,6 +286,7 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
           width: min(100%, min(74vh, 74vw));
           aspect-ratio: 1;
           margin: 0 auto;
+          flex: 0 0 auto;
           box-sizing: border-box;
           position: relative;
           overflow: hidden;
@@ -293,6 +348,7 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
           font-size: 0;
           color: transparent;
           position: relative;
+          overflow: hidden;
         }
         .stone {
           position: absolute;
@@ -336,9 +392,58 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
         .cell.empty[disabled] {
           cursor: not-allowed;
         }
+        .hint {
+          position: absolute;
+          left: 50%;
+          top: 50%;
+          transform: translate(-50%, -50%);
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          width: 76%;
+          height: 76%;
+          border-radius: 50%;
+          background: rgba(122, 62, 29, 0.82);
+          color: #fff8ef;
+          box-shadow: 0 8px 18px rgba(80, 42, 18, 0.24);
+          z-index: 2;
+          pointer-events: none;
+        }
+        .hint-rank {
+          font-size: 0.68rem;
+          font-weight: 700;
+          letter-spacing: 0.06em;
+          line-height: 1;
+        }
+        .hint-prob {
+          margin-top: 3px;
+          font-size: 0.78rem;
+          font-weight: 700;
+          line-height: 1;
+        }
+        .board-value {
+          position: absolute;
+          right: 12px;
+          top: 12px;
+          z-index: 3;
+          padding: 6px 10px;
+          border-radius: 999px;
+          background: rgba(255, 252, 243, 0.92);
+          border: 1px solid rgba(122, 62, 29, 0.12);
+          color: var(--text);
+          font-size: 0.8rem;
+          font-weight: 700;
+          pointer-events: none;
+        }
         @media (max-width: 640px) {
+          .status-area {
+            grid-template-rows: 88px 64px;
+          }
+          .toolbar {
+            flex-wrap: wrap;
+          }
           main {
-            min-height: auto;
             padding: 10px 10px 14px;
           }
           .panel {
@@ -356,29 +461,42 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
     </head>
     <body>
       <main>
-        <h1>Gomoku vs Policy</h1>
         <p>The saved weights are loaded from <code>{{ model_path }}</code>. Choose Black or White for each new game.</p>
         <section class="panel">
-          <div class="toolbar">
-            <div class="message">{{ message }}</div>
-            <form method="post" action="{{ url_for('new_game') }}">
-              <button type="submit" name="player_color" value="0">Play Black</button>
-              <button type="submit" name="player_color" value="1">Play White</button>
-            </form>
+          <div class="status-area">
+            <div class="toolbar">
+              <form method="post" action="{{ url_for('new_game') }}">
+                <button type="submit" name="player_color" value="0">Play Black</button>
+                <button type="submit" name="player_color" value="1">Play White</button>
+              </form>
+            </div>
+            <div class="message-row">
+              <div class="message">{{ message }}</div>
+            </div>
           </div>
           <div class="board">
+            {% if analysis %}
+              <div class="board-value">Value {{ "%.3f"|format(analysis.value) }}</div>
+            {% endif %}
             {% for row_idx in range(board_size) %}
               {% for col_idx in range(board_size) %}
                 {% set cell = board[row_idx][col_idx] %}
                 {% set action = row_idx * board_size + col_idx %}
-                <form class="cell-form" method="post" action="{{ url_for('play_move') }}">
+                {% set hint = analysis_by_action.get(action) %}
+                <form class="cell-form" method="post" action="{{ url_for('board_click') }}">
                   <input type="hidden" name="action" value="{{ action }}">
                   <button
                     class="cell {% if cell == 'B' %}black{% elif cell == 'W' %}white{% else %}empty{% endif %}"
                     type="submit"
-                    {% if game_over or cell %}disabled{% endif %}
+                    {% if game_over or (next_turn == player_color and cell) %}disabled{% endif %}
                   >
                     <span class="stone"></span>
+                    {% if hint and not cell %}
+                      <span class="hint">
+                        <span class="hint-rank">#{{ hint.rank }}</span>
+                        <span class="hint-prob">{{ hint.prob_pct }}%</span>
+                      </span>
+                    {% endif %}
                   </button>
                 </form>
               {% endfor %}
@@ -401,7 +519,7 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
         return redirect(url_for("index"))
 
     @app.post("/move")
-    def play_move():
+    def board_click():
         game_state = app.config["GAME_STATE"]
         if game_state["game_over"]:
             return redirect(url_for("index"))
@@ -410,6 +528,11 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
         board = game_state["board"]
         player_color = game_state["player_color"]
         policy_color = 1 - player_color
+
+        if game_state["next_turn"] == policy_color:
+            return play_policy_move()
+        if game_state["next_turn"] != player_color:
+            return redirect(url_for("index"))
 
         try:
             board = step(board, action, whose_turn=player_color)
@@ -424,7 +547,39 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
                 "message": outcome,
                 "game_over": True,
                 "player_color": player_color,
+                "next_turn": None,
+                "analysis": None,
             }
+            return redirect(url_for("index"))
+
+        analysis_moves, analysis_value = analyze_policy_state(
+            app.config["POLICY"],
+            board,
+            policy_color,
+            top_k=3,
+        )
+        app.config["GAME_STATE"] = {
+            "board": board,
+            "message": "Your move is placed. The policy's top moves are shown on the board.",
+            "game_over": False,
+            "player_color": player_color,
+            "next_turn": policy_color,
+            "analysis": {
+                "moves": analysis_moves,
+                "value": analysis_value,
+            },
+        }
+        return redirect(url_for("index"))
+
+    def play_policy_move():
+        game_state = app.config["GAME_STATE"]
+        if game_state["game_over"] or game_state["player_color"] is None:
+            return redirect(url_for("index"))
+
+        board = game_state["board"]
+        player_color = game_state["player_color"]
+        policy_color = 1 - player_color
+        if game_state["next_turn"] != policy_color:
             return redirect(url_for("index"))
 
         policy_action = select_policy_action(app.config["POLICY"], board, policy_turn=policy_color)
@@ -434,6 +589,8 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
                 "message": "Draw.",
                 "game_over": True,
                 "player_color": player_color,
+                "next_turn": None,
+                "analysis": None,
             }
             return redirect(url_for("index"))
 
@@ -445,12 +602,22 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
             "message": message,
             "game_over": outcome is not None,
             "player_color": player_color,
+            "next_turn": None if outcome is not None else player_color,
+            "analysis": None,
         }
         return redirect(url_for("index"))
 
     @app.get("/")
     def index():
         game_state = app.config["GAME_STATE"]
+        analysis = game_state["analysis"]
+        analysis_by_action = {}
+        if analysis is not None:
+            for idx, move in enumerate(analysis["moves"], start=1):
+                analysis_by_action[move["action"]] = {
+                    "rank": idx,
+                    "prob_pct": move["prob_pct"],
+                }
         return render_template_string(
             template,
             board=board_to_symbols(game_state["board"]),
@@ -458,6 +625,11 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
             game_over=game_state["game_over"],
             message=game_state["message"],
             model_path=str(app.config["MODEL_PATH"]),
+            player_color=game_state["player_color"],
+            policy_color=None if game_state["player_color"] is None else 1 - game_state["player_color"],
+            next_turn=game_state["next_turn"],
+            analysis=analysis,
+            analysis_by_action=analysis_by_action,
         )
 
     return app
