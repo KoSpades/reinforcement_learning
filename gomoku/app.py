@@ -92,6 +92,34 @@ def evaluate_outcome(state, last_player, action):
     return None
 
 
+def initialize_game_state(policy, device, player_color):
+    board = empty_board(device=device)
+    if player_color == 0:
+        return {
+            "board": board,
+            "message": "New game. You are Black and move first.",
+            "game_over": False,
+            "player_color": 0,
+        }
+
+    policy_action = select_policy_action(policy, board, policy_turn=0)
+    if policy_action is None:
+        return {
+            "board": board,
+            "message": "Draw.",
+            "game_over": True,
+            "player_color": 1,
+        }
+
+    board = step(board, policy_action, whose_turn=0)
+    return {
+        "board": board,
+        "message": f"New game. You are White. Policy opened at row {policy_action // BOARD_SIZE}, col {policy_action % BOARD_SIZE}.",
+        "game_over": False,
+        "player_color": 1,
+    }
+
+
 def create_app(model_path=DEFAULT_MODEL_PATH):
     app = Flask(__name__)
     app.config["MODEL_PATH"] = Path(model_path)
@@ -99,8 +127,9 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
     app.config["POLICY"] = load_policy(app.config["MODEL_PATH"], app.config["DEVICE"])
     app.config["GAME_STATE"] = {
         "board": empty_board(device=app.config["DEVICE"]),
-        "message": "New game. You are Black and move first.",
-        "game_over": False,
+        "message": "Choose whether to play Black or White to start a new game.",
+        "game_over": True,
+        "player_color": None,
     }
 
     template = """
@@ -328,12 +357,13 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
     <body>
       <main>
         <h1>Gomoku vs Policy</h1>
-        <p>The saved weights are loaded from <code>{{ model_path }}</code>. You play Black; the policy plays White.</p>
+        <p>The saved weights are loaded from <code>{{ model_path }}</code>. Choose Black or White for each new game.</p>
         <section class="panel">
           <div class="toolbar">
             <div class="message">{{ message }}</div>
             <form method="post" action="{{ url_for('new_game') }}">
-              <button type="submit">New Game</button>
+              <button type="submit" name="player_color" value="0">Play Black</button>
+              <button type="submit" name="player_color" value="1">Play White</button>
             </form>
           </div>
           <div class="board">
@@ -362,11 +392,12 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
 
     @app.post("/new-game")
     def new_game():
-        app.config["GAME_STATE"] = {
-            "board": empty_board(device=app.config["DEVICE"]),
-            "message": "New game. You are Black and move first.",
-            "game_over": False,
-        }
+        player_color = int(request.form["player_color"])
+        app.config["GAME_STATE"] = initialize_game_state(
+            app.config["POLICY"],
+            app.config["DEVICE"],
+            player_color,
+        )
         return redirect(url_for("index"))
 
     @app.post("/move")
@@ -377,38 +408,43 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
 
         action = int(request.form["action"])
         board = game_state["board"]
+        player_color = game_state["player_color"]
+        policy_color = 1 - player_color
 
         try:
-            board = step(board, action, whose_turn=0)
+            board = step(board, action, whose_turn=player_color)
         except ValueError:
             game_state["message"] = "Illegal move. Pick an empty square."
             return redirect(url_for("index"))
 
-        outcome = evaluate_outcome(board, last_player=0, action=action)
+        outcome = evaluate_outcome(board, last_player=player_color, action=action)
         if outcome is not None:
             app.config["GAME_STATE"] = {
                 "board": board,
                 "message": outcome,
                 "game_over": True,
+                "player_color": player_color,
             }
             return redirect(url_for("index"))
 
-        policy_action = select_policy_action(app.config["POLICY"], board, policy_turn=1)
+        policy_action = select_policy_action(app.config["POLICY"], board, policy_turn=policy_color)
         if policy_action is None:
             app.config["GAME_STATE"] = {
                 "board": board,
                 "message": "Draw.",
                 "game_over": True,
+                "player_color": player_color,
             }
             return redirect(url_for("index"))
 
-        board = step(board, policy_action, whose_turn=1)
-        outcome = evaluate_outcome(board, last_player=1, action=policy_action)
+        board = step(board, policy_action, whose_turn=policy_color)
+        outcome = evaluate_outcome(board, last_player=policy_color, action=policy_action)
         message = outcome or f"Policy played at row {policy_action // BOARD_SIZE}, col {policy_action % BOARD_SIZE}."
         app.config["GAME_STATE"] = {
             "board": board,
             "message": message,
             "game_over": outcome is not None,
+            "player_color": player_color,
         }
         return redirect(url_for("index"))
 

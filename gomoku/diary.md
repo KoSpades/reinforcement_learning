@@ -505,3 +505,9 @@ Today, we try to work on the above problems and address them. Starting from the 
 - Apply gradient clipping: just a threshold on how large our gradient can be. We will do clip_grad_norm (clipping based on the total L2 norm of all gradients), using a value of 1, which seems to be standard practice.
 
 Let's implement this.
+
+We got some very good results already: from pure self-play, we get 1 against Rand, 1000AC and 1000RE, and 0.82 against Fixed1000AC, without ever played against it! and 17% against Fixed1000RE. The predicted values are sensible, and the sequences of moves are also not exactly the same anymore.
+
+We just ran 30K more iterations, and got REALLY good results: 1 against three weak ones, and 85% against the two Fixed.
+
+Next step: implement opponent pooling (as a potential solution to both opponent overfitting and castastrophic forgetting).

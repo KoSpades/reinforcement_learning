@@ -384,10 +384,9 @@ if __name__ == "__main__":
     final_policy, loss_by_type = rl_training_loop(cur_state, 
                                                   self_play=True, 
                                                   training_algo=TRAINING_ALGO,
-                                                  player_path=MODEL_DIRS_BY_ALGO[TRAINING_ALGO] / "final_policy_10000.pt",
+                                                  player_path=ACTOR_CRITIC_MODELS_DIR / "final_policy_10000.pt",
                                                   num_iter=TRAIN_ITER)
     print(f"Total training time is {time.time() - start_time}")
 
     plot_loss_by_iter(loss_by_type=loss_by_type)
     inspect_critic_bookkeeping(loss_by_type=loss_by_type)
-    debug_backbone_output_diversity(final_policy)
