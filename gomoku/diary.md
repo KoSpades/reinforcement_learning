@@ -526,3 +526,20 @@ Next step: let's get started with MCTS!!!
 
 Before starting on MCTS, we added some nice little features to output next move likelihood distribution in both debug.py and the UI side (for some direct inspection into the NN :D)
 
+Things to understand: the MCSTS algorithm in general, and fan-out.
+
+### Some clarifying questions:
+
+1. Does MCTS ever update the NN?
+- No, MCTS is only for action selection.
+
+2. If I have around 80 legal moves, then wouldn't I have 80^3 leafs, if I just simulate for 3 steps?
+- No. MCTS generate one complete episode at a time, instead of expanding the tree on a breath-first manner.
+
+3. Do I need to rebuild the tree every time I need to select a new move?
+- We shall keep the subtree of the move that has actually happened, so we don't away all the valuable information we have learned. To do that, suppose move_1 is selected from the root, we can point the tree's root to the corresponding node: self.root = self.root.children[move_1]. 
+- But if we have never explored a move that was actually taken, we do need to rebuild the tree.
+
+4. Do I preserve the tree structure across different episodes?
+- No, because the NN changes across different episodes.
+
