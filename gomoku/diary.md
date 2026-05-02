@@ -508,6 +508,16 @@ Let's implement this.
 
 We got some very good results already: from pure self-play, we get 1 against Rand, 1000AC and 1000RE, and 0.82 against Fixed1000AC, without ever played against it! and 17% against Fixed1000RE. The predicted values are sensible, and the sequences of moves are also not exactly the same anymore.
 
-We just ran 30K more iterations, and got REALLY good results: 1 against three weak ones, and 85% against the two Fixed.
+We just ran 30K more iterations, and got REALLY good results: 1 against three weak ones, and 85% against the two Fixed. Saved as three.pt.
 
-Next step: implement opponent pooling (as a potential solution to both opponent overfitting and castastrophic forgetting).
+And another very interesting observation: another 10K made its performance drop significantly against the two Fixed (40% and 25%). A potential reason for this:
+
+### Late-stage policy collapse
+- After we hit 85% WR, the last three channels at RELU5 have been highly finetuned to achieve good performance.
+- So if we keep the same learning rate, it will actually overshoot its updates to fix a small mistake, leading to performance drop.
+- Let's test this by first rolling back, then dropping down LR to 1e-4, then do some more iter.
+- What we found: even on 3e-5 LR, 1k iter, the performance still collapsed, so we may have landed on a delicate spot for three.pt to perform this well. And this model simply has no more math space to absorb any additional training/information.
+
+It's time to move on from three.pt, and perhaps actor-critic entirely :)
+
+Next step: let's get started with MCTS!!!
