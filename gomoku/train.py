@@ -96,7 +96,7 @@ def generate_episode_for_reinforce(start_state, self_play, our_player, opponent,
     }
 
 
-def compute_total_losses(episode_data, self_play, training_algo, regular_beta, device):
+def compute_total_losses(episode_data, self_play, training_algo, value_coef, regular_beta, device):
     winner = episode_data["episode_history"][-1][1]
     black_log_probs = episode_data["black_log_probs"]
     white_log_probs = episode_data["white_log_probs"]
@@ -157,7 +157,7 @@ def compute_total_losses(episode_data, self_play, training_algo, regular_beta, d
     else:
         white_critic_loss = torch.tensor(0.0, device=device)
 
-    critic_loss = black_critic_loss + white_critic_loss
+    critic_loss = value_coef * (black_critic_loss + white_critic_loss)
 
     # Finally: calculate the entropy loss
     trainable_entropies = episode_data["trainable_entropies"]
@@ -169,7 +169,7 @@ def compute_total_losses(episode_data, self_play, training_algo, regular_beta, d
     return actor_loss, critic_loss, entropy_loss
 
 
-def build_loss_bookkeeping(episode_data, self_play, training_algo, device):
+def build_loss_bookkeeping(episode_data, self_play, training_algo, value_coef, device):
     winner = episode_data["episode_history"][-1][1]
     black_predicted = episode_data["black_predicted"]
     white_predicted = episode_data["white_predicted"]
@@ -188,7 +188,9 @@ def build_loss_bookkeeping(episode_data, self_play, training_algo, device):
         black_value_mean = black_predicted_tensor.mean().detach()
         black_predicted_values = black_predicted_tensor.detach().cpu().tolist()
         if training_algo == "actor_critic":
-            black_critic_loss = ((black_predicted_tensor - policy_reward_black) ** 2).mean().detach()
+            black_critic_loss = (
+                value_coef * ((black_predicted_tensor - policy_reward_black) ** 2).mean()
+            ).detach()
         else:
             black_critic_loss = torch.tensor(0.0, device=device)
     else:
@@ -201,7 +203,9 @@ def build_loss_bookkeeping(episode_data, self_play, training_algo, device):
         white_value_mean = white_predicted_tensor.mean().detach()
         white_predicted_values = white_predicted_tensor.detach().cpu().tolist()
         if training_algo == "actor_critic":
-            white_critic_loss = ((white_predicted_tensor - policy_reward_white) ** 2).mean().detach()
+            white_critic_loss = (
+                value_coef * ((white_predicted_tensor - policy_reward_white) ** 2).mean()
+            ).detach()
         else:
             white_critic_loss = torch.tensor(0.0, device=device)
     else:
@@ -225,7 +229,8 @@ def rl_training_loop(start_state,
                      player_path=None,
                      opponent=None,
                      num_iter=1000, 
-                     learning_rate=1e-3, 
+                     learning_rate=3e-4,
+                     value_coef=0.25, 
                      regular_beta=0.01):
     """
     Only when self_play is True do we want to train the opponent as well.
@@ -266,6 +271,7 @@ def rl_training_loop(start_state,
                 episode_data=episode_data,
                 self_play=self_play,
                 training_algo=training_algo,
+                value_coef=value_coef,
                 regular_beta=regular_beta,
                 device=start_state.device,
             )
@@ -273,6 +279,7 @@ def rl_training_loop(start_state,
                 episode_data=episode_data,
                 self_play=self_play,
                 training_algo=training_algo,
+                value_coef=value_coef,
                 device=start_state.device,
             )
             if training_algo == "reinforce":
@@ -284,6 +291,8 @@ def rl_training_loop(start_state,
             
             optimizer.zero_grad()
             total_loss.backward()
+            # Apply gradient clipping
+            torch.nn.utils.clip_grad_norm_(cur_policy.parameters(), max_norm=1)
             optimizer.step()
 
             actor_loss_by_iter.append(actor_loss.detach())
@@ -339,9 +348,6 @@ def plot_loss_by_iter(loss_by_type):
 
 
 def inspect_critic_bookkeeping(loss_by_type):
-    """
-    For debuggin: For all episodes in the entire training run, print out the 1, 25, 50, 75, 99 percentile predicted value.
-    """
     bookkeeping = loss_by_type["bookkeeping"]
 
     black_predicted_values = bookkeeping["black_predicted_values"]
@@ -352,9 +358,9 @@ def inspect_critic_bookkeeping(loss_by_type):
             print(f"{label}: no samples")
             return
         values_tensor = torch.tensor(values, dtype=torch.float32)
-        q1, q25, q50, q75, q99 = torch.quantile(values_tensor, torch.tensor([0.05, 0.25, 0.5, 0.75, 0.99]))
+        q10, q50, q90 = torch.quantile(values_tensor, torch.tensor([0.1, 0.5, 0.9]))
         print(
-            f"{label}: p1={q1.item():.4f}, p25={q25.item():.4f}, median={q50.item():.4f}, p75={q75.item():.4f}, p99={q99.item():.4f}"
+            f"{label}: p10={q10.item():.4f}, median={q50.item():.4f}, p90={q90.item():.4f}"
         )
 
     print("------ Predicted Value Percentiles ------")
@@ -384,3 +390,4 @@ if __name__ == "__main__":
 
     plot_loss_by_iter(loss_by_type=loss_by_type)
     inspect_critic_bookkeeping(loss_by_type=loss_by_type)
+    debug_backbone_output_diversity(final_policy)

@@ -455,12 +455,11 @@ Here's something I find quite cool: another 10K of self-play. 98 against Rand/10
 
 Okay, unforunately, after another 10K, back to close to 0 against Fixed opponents. Looks like we did not get emerging performance after all. Time to step piling up the iterations, and start reflecting on the all the interesting observations/questions above.
 
-
-
 ## Collection of issues that we have observed
 
 1. Value/Critic Collapase
 - After close investigation into the value function itself, we are basically outputting -1 for EVERY SINGLE value prediction. This is clearly wrong: we will look closely into this issue and try to address this.
+- (This will also help us solve its scaling problem.)
 
 2. Opponent Overfitting
 - Yes, this is a real thing. If we keep playing against a fixed opponent, instead of learning a Gomoku policy that's generally strong, we learn a best response to the opponent's distribution.
@@ -473,3 +472,36 @@ Okay, unforunately, after another 10K, back to close to 0 against Fixed opponent
 4. Credit assignment
 - Even with actor-critic, our reward is terminal. And it may not learn the finishing move (from 4 to 5) if we don't show it enough trajectories that immediate win matters.
 
+5. Feature Collapse
+- And after running some inspection, we seem to find a bigger problem: The pre-tanh value was identical for a bunch of different boards being tested. Since this value is a dot product between weights and backbone features plus bias, the backbone features have essentially collapsed into a constant vector, regardless of the board. (For this, we wrote a debugging function in debug.py)
+- And this problem seems like the most important one to address (because it has ultimately killed the backbone.)
+
+## 05/01/26
+
+Today, we try to work on the above problems and address them. Starting from the feature collapse one. For each problem, let's understand the following, both in its general form, and its implication for the Gomoku project:
+- What is it? (the definition)
+- What's the outcome of this problem?
+- How do I detect if the problem is present?
+- What's the potential cause of this problem?
+- How can we fix it?
+
+### Addressing Feature Collapse
+
+1. What is feature collapse from delying ReLU?
+- The NN can no longer extract distinct features from different representations of the board. In our example, we are outputting a constant vector for 10 different board states.
+
+2. What is the consequence?
+- Instead of reacting to the game and play accordingly, the NN is essential playing blindly. So it's always going to output the same value, regardless of the board (-1 in our example), and it will always pick the same sequence of moves, after accounting for the legal move mask.
+
+3. How do we know if we have this problem?
+- We can look at the NN, and in each RELU layer, how many neurons are non-zero. Right now, we are seeing that the 4th RELU is completely dead. So 5th RELU is actually just outputting the bias term without looking at the board at all. (y = Wx+b, if x is all 0, W is never updated again.)
+
+4. What's the potential cause?
+- Summing actor loss with unscaled critic loss: when we sum an unscaled critic loss, its value are likely huge early during the training, which can large gradient updates to the negative direction (especially since we are not clipping how much we allow our gradient updates to be.) This can cause many RELU neurons to 0, and stay at 0 permanently due to RELU's functional form, effectively being killed.
+
+5. How will we fix it?
+- We will lower the learning rate to 3e-4 from 1e-3.
+- We will scale the critic loss by 0.25 (by make sure actor and critic loss are roughly on the same scale).
+- Apply gradient clipping: just a threshold on how large our gradient can be. We will do clip_grad_norm (clipping based on the total L2 norm of all gradients), using a value of 1, which seems to be standard practice.
+
+Let's implement this.
