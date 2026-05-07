@@ -530,16 +530,41 @@ Things to understand: the MCSTS algorithm in general, and fan-out.
 
 ### Some clarifying questions:
 
-1. Does MCTS ever update the NN?
+1. Each simulation stops once it reaches a leaf node, or reaches termination. And each simulation always starts at the same root node.
+
+2. Does MCTS ever update the NN?
 - No, MCTS is only for action selection.
 
-2. If I have around 80 legal moves, then wouldn't I have 80^3 leafs, if I just simulate for 3 steps?
-- No. MCTS generate one complete episode at a time, instead of expanding the tree on a breath-first manner.
+3. If I have around 80 legal moves, then wouldn't I have 80^3 leafs, if I just simulate for 3 steps?
+- No. MCTS generate one simulation at a time, instead of expanding the tree on a breath-first manner.
 
-3. Do I need to rebuild the tree every time I need to select a new move?
+4. Do I need to rebuild the tree every time I need to select a new move?
 - We shall keep the subtree of the move that has actually happened, so we don't away all the valuable information we have learned. To do that, suppose move_1 is selected from the root, we can point the tree's root to the corresponding node: self.root = self.root.children[move_1]. 
 - But if we have never explored a move that was actually taken, we do need to rebuild the tree.
 
-4. Do I preserve the tree structure across different episodes?
+5. Do I preserve the tree structure across different episodes?
 - No, because the NN changes across different episodes.
+
+6. If different level of the tree alternates between black and white moves, how do we keep the "value" of a node consistent?
+- We have to make sure all values in the search tree correspond to the value of the current player. So we need to flip the values for the levels corresponding to the opponent's move when doing updates.
+
+### Potential Performance Implication of Adding MCTS
+- Yes, we will have a massive slowdown. (somewhere between 20X to 100X). So 10k iterations that previously took 5 minutes can now take 5 hours :)
+- Here's a good suggestion: first use MCTS for testing/inferences. Once we have sufficient evidence that it works, we will use it during training.
+
+We should be ready to code it now:
+- Figure out the structure for the tree and write down the methods we need.
+- Then implement it.
+
+## 05/06/26
+
+Each node permanents stores:
+- P: prior probability of this move. (Static, set once during creation.)
+- N: visit counts: increments during updates.
+- W: total sum of v signals that have passed through during updates.
+- Q: average value W/N.
+- self.action: which move led to this board from parent, (0 - 80).
+- self.parent: a pointer to the Parent node.
+- self.children: a map of (action, Child_Node) to give O(1) access to child Nodes.
+
 
