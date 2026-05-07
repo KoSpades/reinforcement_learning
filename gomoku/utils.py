@@ -37,6 +37,7 @@ def check_win_cond(state, whose_turn, action):
     Input:
         state
         whose_turn: whoever just made a move (e.g. if black just made a move, whose_turn is 0)
+        action: what's the last move that led to the current state
     Output:
         0 if black wins, 1 if white. -1 o/w
     """ 

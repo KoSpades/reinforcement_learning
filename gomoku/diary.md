@@ -567,4 +567,7 @@ Each node permanents stores:
 - self.parent: a pointer to the Parent node.
 - self.children: a map of (action, Child_Node) to give O(1) access to child Nodes.
 
+### Should I store the board at every Node?
+- No for two reasons. 1) It will likely lead to memory explosion, and 2) We are traversing down the tree anyways, so we can reconstruct the state at every Node on-the-fly.
+
 
