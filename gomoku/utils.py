@@ -54,6 +54,10 @@ def check_win_cond(state, whose_turn, action):
             r -= row_dir
             c -= col_dir
         return count
+    
+    # Add an edge case for empty board
+    if action == -1:
+        return -1
         
     # Set up the shape checks: We need four shapes: horizontal, diagonal, and two diagonal
     action = int(action)

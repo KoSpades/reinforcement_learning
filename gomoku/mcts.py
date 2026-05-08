@@ -50,17 +50,17 @@ class Root(Node):
         self.state = state
 
 
-def mcts_action_selection(state, whose_turn, policy, total_sim=20):
+def mcts_action_selection(state, whose_turn, last_action, policy, total_sim=20):
     '''
     state: the current board state
     whose_turn: whose turn is it to take the next move
+    last_action: the last action that has led to this board
     policy: a PolicyNetwork that outputs a distribution over actions and a value
     total_sim: how many total simulations do we want
     '''
     num_sim = 0
     device = next(policy.parameters()).device
     root = Root(whose_turn=whose_turn, P=0, parent=None, state=state)
-    cur_node = root
 
     def get_policy_state(state, whose_turn):
         if whose_turn == 0:
@@ -69,11 +69,19 @@ def mcts_action_selection(state, whose_turn, policy, total_sim=20):
             return torch.stack([state[1], state[0]])
 
     while(num_sim < total_sim):
-        # First flip whose_turn
+        cur_node = root
+        cur_action = last_action
         if cur_node.is_leaf:
             # There are two cases when a Node has no children
             # 1. It has not been expanded yet, but game isn't over.
             # 2. Game is at terminal state.
+            # Let's first check for terminal condition
+            # Note: since we are only storing the board state at the root, 
+            # we need to step from root all the way down to the current node 
+            # to cover the state corresponding to this node
+            winner = check_win_cond()
+
+
             if not cur_node.is_terminal:
                 # Create all valid children 
                 policy_state = get_policy_state(state, cur_node.whose_turn)
@@ -109,5 +117,8 @@ if __name__ == "__main__":
     state_dict = checkpoint["model"]
     policy.load_state_dict(state_dict)
     policy.eval()
-    mcts_action_selection(cur_state, 0, policy)
+    mcts_action_selection(state=cur_state, 
+                          whose_turn=0, 
+                          last_action=-1,
+                          policy=policy)
 
