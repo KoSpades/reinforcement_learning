@@ -570,4 +570,10 @@ Each node permanents stores:
 ### Should I store the board at every Node?
 - No for two reasons. 1) It will likely lead to memory explosion, and 2) We are traversing down the tree anyways, so we can reconstruct the state at every Node on-the-fly.
 
+MCTS in progress.
+
+## 05/07/26
+
+### What's a good way for me to find all valid children for a board state?
+- legal_actions = legal_mask.non_zero().flatten().tolist(). Then iterate over legal_actions. We will then use the values from action_probs outputted by the network to set each P for these newly created nodes.
 

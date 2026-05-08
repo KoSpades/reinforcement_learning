@@ -1,4 +1,8 @@
-from config import BOARD_SIZE
+import torch
+from pathlib import Path
+
+from config import BOARD_SIZE, ACTOR_CRITIC_MODELS_DIR
+from model import PolicyNetwork
 from utils import check_win_cond, get_random_legal_move, step
 
 class Node:
@@ -41,21 +45,28 @@ class Node:
 
 class Root(Node):
 
-    def __init__(self, whose_turn, board):
+    def __init__(self, whose_turn, state):
         super().__init__(whose_turn)
-        self.board = board
+        self.state = state
 
 
-def mcts_action_selection(board, whose_turn, network, total_sim=20):
+def mcts_action_selection(state, whose_turn, policy, total_sim=20):
     '''
-    board: the current board state
+    state: the current board state
     whose_turn: whose turn is it to take the next move
-    network: a PolicyNetwork that outputs a distribution over actions and a value
+    policy: a PolicyNetwork that outputs a distribution over actions and a value
     total_sim: how many total simulations do we want
     '''
     num_sim = 0
-    root = Root(whose_turn=whose_turn, board=board)
+    device = next(policy.parameters()).device
+    root = Root(whose_turn=whose_turn, state=state)
     cur_node = root
+
+    def get_policy_state(state, whose_turn):
+        if whose_turn == 0:
+            return state
+        else:
+            return torch.stack(state[1], state[0])
 
     while(num_sim < total_sim):
         if cur_node.is_leaf:
@@ -63,9 +74,33 @@ def mcts_action_selection(board, whose_turn, network, total_sim=20):
             # 1. It has not been expanded yet, but game isn't over.
             # 2. Game is at terminal state.
             if not cur_node.is_terminal:
-                pass
+                # Create all valid children 
+                policy_state = get_policy_state(state, whose_turn)
+                action_logits, cur_value = policy(policy_state.unsqueeze(0).to(device))
+                action_logits = action_logits.squeeze(0)
+                cur_value = cur_value.squeeze()
+                occupied_spaces = state.sum(dim=0)
+                legal_mask = (occupied_spaces == 0).flatten().to(device)
+                masked_logits = action_logits.masked_fill(~legal_mask, float("-inf"))
+                action_dist = torch.distributions.Categorical(logits=masked_logits)
+                print(action_dist.probs)
+                legal_actions = legal_mask.nonzero().flatten().tolist()
+                print(legal_actions)
+                exit()
             else:
                 pass
         else:
             pass
+
+
+if __name__ == "__main__":
+    device = "cpu"
+    cur_state = torch.zeros((2, BOARD_SIZE, BOARD_SIZE), device=device)
+    policy = PolicyNetwork().to(device)
+    model_path = Path(ACTOR_CRITIC_MODELS_DIR / "final_policy_10000.pt")
+    checkpoint = torch.load(model_path, map_location=device)
+    state_dict = checkpoint["model"]
+    policy.load_state_dict(state_dict)
+    policy.eval()
+    mcts_action_selection(cur_state, 0, policy)
 
