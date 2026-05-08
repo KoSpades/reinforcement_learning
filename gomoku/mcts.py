@@ -7,7 +7,7 @@ from utils import check_win_cond, get_random_legal_move, step
 
 class Node:
 
-    def __init__(self, whose_turn):
+    def __init__(self, whose_turn, P, parent):
         '''
         whose_turn: whose turn is it to place the NEXT MOVE.
         P: predicted likelihood of taking the action that led to this Node. Computed from NN.
@@ -20,11 +20,11 @@ class Node:
         winner: 0, 1, or None. It's 0 or 1 if is_terminal is True.
         '''
         self.whose_turn = whose_turn
-        self.P = 0
+        self.P = P
         self.N = 0
         self.W = 0
         self.action = -1 
-        self.parent = None
+        self.parent = parent
         self.children = {}
         self.is_terminal = False
         self.winner = None
@@ -45,8 +45,8 @@ class Node:
 
 class Root(Node):
 
-    def __init__(self, whose_turn, state):
-        super().__init__(whose_turn)
+    def __init__(self, whose_turn, P, parent, state):
+        super().__init__(whose_turn, P, parent)
         self.state = state
 
 
@@ -59,23 +59,24 @@ def mcts_action_selection(state, whose_turn, policy, total_sim=20):
     '''
     num_sim = 0
     device = next(policy.parameters()).device
-    root = Root(whose_turn=whose_turn, state=state)
+    root = Root(whose_turn=whose_turn, P=0, parent=None, state=state)
     cur_node = root
 
     def get_policy_state(state, whose_turn):
         if whose_turn == 0:
             return state
         else:
-            return torch.stack(state[1], state[0])
+            return torch.stack([state[1], state[0]])
 
     while(num_sim < total_sim):
+        # First flip whose_turn
         if cur_node.is_leaf:
             # There are two cases when a Node has no children
             # 1. It has not been expanded yet, but game isn't over.
             # 2. Game is at terminal state.
             if not cur_node.is_terminal:
                 # Create all valid children 
-                policy_state = get_policy_state(state, whose_turn)
+                policy_state = get_policy_state(state, cur_node.whose_turn)
                 action_logits, cur_value = policy(policy_state.unsqueeze(0).to(device))
                 action_logits = action_logits.squeeze(0)
                 cur_value = cur_value.squeeze()
@@ -83,9 +84,15 @@ def mcts_action_selection(state, whose_turn, policy, total_sim=20):
                 legal_mask = (occupied_spaces == 0).flatten().to(device)
                 masked_logits = action_logits.masked_fill(~legal_mask, float("-inf"))
                 action_dist = torch.distributions.Categorical(logits=masked_logits)
-                print(action_dist.probs)
                 legal_actions = legal_mask.nonzero().flatten().tolist()
+                print(action_dist.probs)
                 print(legal_actions)
+                for action in legal_actions:
+                    child_node = Node(whose_turn=1-cur_node.whose_turn, 
+                                      P=action_dist.probs[action].item(),
+                                      parent=cur_node)
+                    cur_node.children[action] = child_node
+                # back propagate the value from NN from current node upwards
                 exit()
             else:
                 pass
