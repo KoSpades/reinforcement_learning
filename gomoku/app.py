@@ -58,11 +58,10 @@ def board_to_symbols(state):
     return cells
 
 
-def board_is_full(state):
-    return bool((state.sum(dim=0) != 0).all().item())
-
-
 def select_policy_action(policy, state, policy_turn):
+    if check_win_cond(state, 1 - policy_turn, -1) == 2:
+        return None
+
     if policy_turn == 0:
         policy_state = state
     else:
@@ -73,8 +72,6 @@ def select_policy_action(policy, state, policy_turn):
         action_logits = action_logits.squeeze(0)
         occupied_spaces = state.sum(dim=0)
         legal_mask = (occupied_spaces == 0).flatten()
-        if not legal_mask.any():
-            return None
         masked_logits = action_logits.masked_fill(~legal_mask, float("-inf"))
         action_probs = F.softmax(masked_logits, dim=-1)
         action_dist = torch.distributions.Categorical(probs=action_probs)
@@ -82,6 +79,9 @@ def select_policy_action(policy, state, policy_turn):
 
 
 def analyze_policy_state(policy, state, policy_turn, top_k=3):
+    if check_win_cond(state, 1 - policy_turn, -1) == 2:
+        return [], 0.0
+
     if policy_turn == 0:
         policy_state = state
     else:
@@ -93,8 +93,6 @@ def analyze_policy_state(policy, state, policy_turn, top_k=3):
         value = float(value.squeeze().item())
         occupied_spaces = state.sum(dim=0)
         legal_mask = (occupied_spaces == 0).flatten()
-        if not legal_mask.any():
-            return [], value
 
         masked_logits = action_logits.masked_fill(~legal_mask, float("-inf"))
         action_probs = F.softmax(masked_logits, dim=-1)
@@ -117,7 +115,7 @@ def evaluate_outcome(state, last_player, action):
         return "Black wins."
     if winner == 1:
         return "White wins."
-    if board_is_full(state):
+    if winner == 2:
         return "Draw."
     return None
 

@@ -41,7 +41,10 @@ def calc_win_rate(our_player: OurPlayer, opponent, num_games=100, random_start=T
                 cur_state = next_state
                 cur_turn = 1 - cur_turn
                 our_turn = not our_turn
-            # Second case: reached termination
+            elif res == 2:
+                num_draws += 1
+                break
+            # Second case: reached win termination
             else:
                 num_wins += (res == our_color)
                 break

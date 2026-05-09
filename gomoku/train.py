@@ -81,7 +81,15 @@ def generate_episode_for_reinforce(start_state, self_play, our_player, opponent,
             cur_state = next_state
             cur_turn = 1 - cur_turn
             our_turn = not our_turn
-        # Second case: reached termination
+        elif res == 2:
+            episode_history = []
+            black_log_probs = []
+            white_log_probs = []
+            trainable_entropies = []
+            black_predicted = []
+            white_predicted = []
+            break
+        # Second case: reached win termination
         else:
             episode_history.append((next_state, res))
             break
@@ -106,13 +114,20 @@ def compute_total_losses(episode_data, self_play, training_algo, value_coef, reg
     # Case 1: self-play
     # both black and white side should get a reward
     if self_play:
-        policy_reward_black = 1 if winner == 0 else -1
-        policy_reward_white = -policy_reward_black
+        if winner == 2:
+            policy_reward_black = 0
+            policy_reward_white = 0
+        else:
+            policy_reward_black = 1 if winner == 0 else -1
+            policy_reward_white = -policy_reward_black
     # Case 2: fixed opponent
     # we shall only use OUR reward
     else:
         our_color = episode_data["our_color"]
-        our_reward = 1 if winner == our_color else -1
+        if winner == 2:
+            our_reward = 0
+        else:
+            our_reward = 1 if winner == our_color else -1
         policy_reward_black = our_reward if our_color == 0 else 0
         policy_reward_white = our_reward if our_color == 1 else 0
 
@@ -175,11 +190,18 @@ def build_loss_bookkeeping(episode_data, self_play, training_algo, value_coef, d
     white_predicted = episode_data["white_predicted"]
 
     if self_play:
-        policy_reward_black = 1 if winner == 0 else -1
-        policy_reward_white = -policy_reward_black
+        if winner == 2:
+            policy_reward_black = 0
+            policy_reward_white = 0
+        else:
+            policy_reward_black = 1 if winner == 0 else -1
+            policy_reward_white = -policy_reward_black
     else:
         our_color = episode_data["our_color"]
-        our_reward = 1 if winner == our_color else -1
+        if winner == 2:
+            our_reward = 0
+        else:
+            our_reward = 1 if winner == our_color else -1
         policy_reward_black = our_reward if our_color == 0 else 0
         policy_reward_white = our_reward if our_color == 1 else 0
 

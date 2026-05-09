@@ -41,6 +41,12 @@ class OurPlayer(Player):
         """
         whose_turn: 0 if I am black, 1 if I am white.
         """
+        # First check if we are in a drawing board already
+        if check_win_cond(state, 1 - whose_turn, -1) == 2:
+            if sample:
+                return -1, None, None, None
+            return -1
+
         policy_state = self._policy_state(state, whose_turn)
         # We randomly sample an action
         if sample:
@@ -49,8 +55,6 @@ class OurPlayer(Player):
             cur_value = cur_value.squeeze()
             occupied_spaces = state.sum(dim=0)
             legal_mask = (occupied_spaces == 0).flatten().to(self.device)
-            if not legal_mask.any():
-                return -1, None, None, None
             masked_logits = action_logits.masked_fill(~legal_mask, float("-inf"))
             action_dist = torch.distributions.Categorical(logits=masked_logits)
             cur_action = action_dist.sample()
@@ -64,8 +68,6 @@ class OurPlayer(Player):
                 action_logits = action_logits.squeeze(0)
                 occupied_spaces = state.sum(dim=0)
                 legal_mask = (occupied_spaces == 0).flatten().to(self.device)
-                if not legal_mask.any():
-                    return -1
                 masked_logits = action_logits.masked_fill(~legal_mask, float("-inf"))
                 return int(torch.argmax(masked_logits).item())
 
@@ -77,7 +79,7 @@ class RandomOpponent(Player):
     """
 
     def select_action(self, state, whose_turn=None):
-        if not (state.sum(dim=0) == 0).any():
+        if check_win_cond(state, 1, -1) == 2:
             return -1
         return get_random_legal_move(state)
 
@@ -113,6 +115,11 @@ class FirstOpponent(Player):
         return None
 
     def _policy_action(self, state, whose_turn):
+
+        # First check if we are in a drawing board already
+        if check_win_cond(state, 1 - whose_turn, -1) == 2:
+            return -1
+
         if whose_turn == 0:
             policy_state = state
         else:
@@ -130,8 +137,11 @@ class FirstOpponent(Player):
         """
         whose_turn: 0 if I am black, 1 if I am white.
         """
-        if not (state.sum(dim=0) == 0).any():
+
+        # First check if we are in a drawing board already
+        if check_win_cond(state, 1 - whose_turn, -1) == 2:
             return -1
+        
         winning_action = self._find_immediate_move(state, whose_turn)
         if winning_action is not None:
             return winning_action

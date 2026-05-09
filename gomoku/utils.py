@@ -39,7 +39,7 @@ def check_win_cond(state, last_player, action):
         last_player: whoever just made a move (e.g. if black just made a move, last_player is 0)
         action: what's the last move that led to the current state
     Output:
-        0 if black wins, 1 if white. -1 o/w
+        0 if black wins, 1 if white, 2 if draw. -1 if the game is not terminated.
     """ 
     def count_direction(board, row, col, row_dir, col_dir):
         count = 1
@@ -55,8 +55,12 @@ def check_win_cond(state, last_player, action):
             c -= col_dir
         return count
     
-    # Add an edge case for empty board (denoted by action == -1)
+    occupied = state.sum(dim=0)
+
+    # When no last action is provided, this helper can still detect a draw.
     if action == -1:
+        if bool((occupied != 0).all().item()):
+            return 2
         return -1
         
     # Set up the shape checks: We need four shapes: horizontal, diagonal, and two diagonal
@@ -69,7 +73,10 @@ def check_win_cond(state, last_player, action):
     for dr, dc in directions:
         if count_direction(board, row, col, dr, dc) >= 5:
             return last_player
-        
+
+    if bool((occupied != 0).all().item()):
+        return 2
+
     return -1
 
 

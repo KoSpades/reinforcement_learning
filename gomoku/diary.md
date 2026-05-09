@@ -577,3 +577,11 @@ MCTS in progress.
 ### What's a good way for me to find all valid children for a board state?
 - legal_actions = legal_mask.non_zero().flatten().tolist(). Then iterate over legal_actions. We will then use the values from action_probs outputted by the network to set each P for these newly created nodes.
 
+## 05/08/26
+
+Continued doing MCTS. Make steady progress.
+
+Also did some code cleaning, including:
+- make the meaning of "whose_turn" consistent throughout the repo, and make check_win_cond documentation less confusing
+- reworked check_win_cond to handle draw games too, instead of having separate logic for it throughout the code.
+
