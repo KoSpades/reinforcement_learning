@@ -60,7 +60,7 @@ def mcts_action_selection(state, whose_turn, last_action, policy, total_sim=20):
     '''
     num_sim = 0
     device = next(policy.parameters()).device
-    root = Root(whose_turn=whose_turn, P=0, parent=None, state=state)
+    root = Root(whose_turn=whose_turn, P=0, parent=None, action=last_action, state=state)
 
     def get_policy_state(state, whose_turn):
         if whose_turn == 0:
@@ -78,7 +78,7 @@ def mcts_action_selection(state, whose_turn, last_action, policy, total_sim=20):
         cur_whose_turn = cur_node.whose_turn
         for action in actions:
             cur_state = step(cur_state, action, cur_whose_turn)
-            cur_whose_turn = 1 - cur_whose_turn 
+            cur_whose_turn = 1 - cur_whose_turn
         return cur_state
 
     while(num_sim < total_sim):
@@ -93,16 +93,17 @@ def mcts_action_selection(state, whose_turn, last_action, policy, total_sim=20):
             # we need to step from root all the way down to the current node 
             # to cover the state corresponding to this node
             cur_node_state = get_state_for_cur_node(cur_node)
-            winner = check_win_cond()
+            winner = check_win_cond(cur_node_state, 1 - cur_node.whose_turn, cur_node.action)
+            # TODO: from here
 
 
             if not cur_node.is_terminal:
                 # Create all valid children 
-                policy_state = get_policy_state(state, cur_node.whose_turn)
+                policy_state = get_policy_state(cur_node_state, cur_node.whose_turn)
                 action_logits, cur_value = policy(policy_state.unsqueeze(0).to(device))
                 action_logits = action_logits.squeeze(0)
                 cur_value = cur_value.squeeze()
-                occupied_spaces = state.sum(dim=0)
+                occupied_spaces = cur_node_state.sum(dim=0)
                 legal_mask = (occupied_spaces == 0).flatten().to(device)
                 masked_logits = action_logits.masked_fill(~legal_mask, float("-inf"))
                 action_dist = torch.distributions.Categorical(logits=masked_logits)
@@ -110,7 +111,7 @@ def mcts_action_selection(state, whose_turn, last_action, policy, total_sim=20):
                 print(action_dist.probs)
                 print(legal_actions)
                 for action in legal_actions:
-                    child_node = Node(whose_turn=1-cur_node.whose_turn, 
+                    child_node = Node(whose_turn=1 - cur_node.whose_turn, 
                                       P=action_dist.probs[action].item(),
                                       parent=cur_node,
                                       action=action)
@@ -136,4 +137,3 @@ if __name__ == "__main__":
                           whose_turn=0, 
                           last_action=-1,
                           policy=policy)
-

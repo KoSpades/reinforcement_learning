@@ -32,11 +32,11 @@ def get_random_legal_move(state):
     return legal_actions[legal_idx]
 
 
-def check_win_cond(state, whose_turn, action):
+def check_win_cond(state, last_player, action):
     """
     Input:
         state
-        whose_turn: whoever just made a move (e.g. if black just made a move, whose_turn is 0)
+        last_player: whoever just made a move (e.g. if black just made a move, last_player is 0)
         action: what's the last move that led to the current state
     Output:
         0 if black wins, 1 if white. -1 o/w
@@ -55,20 +55,20 @@ def check_win_cond(state, whose_turn, action):
             c -= col_dir
         return count
     
-    # Add an edge case for empty board
+    # Add an edge case for empty board (denoted by action == -1)
     if action == -1:
         return -1
         
     # Set up the shape checks: We need four shapes: horizontal, diagonal, and two diagonal
     action = int(action)
-    board = state[whose_turn]
+    board = state[last_player]
 
     directions = [(1, 0), (0, 1), (1, 1), (1, -1)]
     row = action // BOARD_SIZE
     col = action % BOARD_SIZE
     for dr, dc in directions:
         if count_direction(board, row, col, dr, dc) >= 5:
-            return whose_turn
+            return last_player
         
     return -1
 
