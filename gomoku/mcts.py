@@ -7,7 +7,7 @@ from utils import check_win_cond, get_random_legal_move, step
 
 class Node:
 
-    def __init__(self, whose_turn, P, parent):
+    def __init__(self, whose_turn, P, parent, action):
         '''
         whose_turn: whose turn is it to place the NEXT MOVE.
         P: predicted likelihood of taking the action that led to this Node. Computed from NN.
@@ -23,7 +23,7 @@ class Node:
         self.P = P
         self.N = 0
         self.W = 0
-        self.action = -1 
+        self.action = action
         self.parent = parent
         self.children = {}
         self.is_terminal = False
@@ -45,8 +45,8 @@ class Node:
 
 class Root(Node):
 
-    def __init__(self, whose_turn, P, parent, state):
-        super().__init__(whose_turn, P, parent)
+    def __init__(self, whose_turn, P, parent, action, state):
+        super().__init__(whose_turn, P, parent, action)
         self.state = state
 
 
@@ -67,6 +67,19 @@ def mcts_action_selection(state, whose_turn, last_action, policy, total_sim=20):
             return state
         else:
             return torch.stack([state[1], state[0]])
+        
+    def get_state_for_cur_node(cur_node):
+        actions = []
+        while cur_node.parent:
+            actions.append(cur_node.action)
+            cur_node = cur_node.parent
+        actions.reverse()
+        cur_state = cur_node.state
+        cur_whose_turn = cur_node.whose_turn
+        for action in actions:
+            cur_state = step(cur_state, action, cur_whose_turn)
+            cur_whose_turn = 1 - cur_whose_turn 
+        return cur_state
 
     while(num_sim < total_sim):
         cur_node = root
@@ -79,6 +92,7 @@ def mcts_action_selection(state, whose_turn, last_action, policy, total_sim=20):
             # Note: since we are only storing the board state at the root, 
             # we need to step from root all the way down to the current node 
             # to cover the state corresponding to this node
+            cur_node_state = get_state_for_cur_node(cur_node)
             winner = check_win_cond()
 
 
@@ -98,7 +112,8 @@ def mcts_action_selection(state, whose_turn, last_action, policy, total_sim=20):
                 for action in legal_actions:
                     child_node = Node(whose_turn=1-cur_node.whose_turn, 
                                       P=action_dist.probs[action].item(),
-                                      parent=cur_node)
+                                      parent=cur_node,
+                                      action=action)
                     cur_node.children[action] = child_node
                 # back propagate the value from NN from current node upwards
                 exit()
