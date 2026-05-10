@@ -95,10 +95,21 @@ def mcts_action_selection(state, whose_turn, last_action, policy, total_sim=20):
             # 2. Game is at terminal state.
 
             # It may be a terminal node already: in this case, we just want to propagate its actual value up
+            # Need to get the right value to propagate for this leaf.
             if cur_node.is_terminal:
+                last_turn = 1 - cur_node.whose_turn
+                if cur_node.winner == 2:
+                    back_value = 0 
+                elif last_turn == cur_node.winner:
+                    # Note: this is -1, because node value is from the perspective of player who needs to move NOW
+                    back_value = -1
+                else:
+                    back_value = 1
+                cur_node.value_propagate(back_value)
+                num_sim += 1
+                continue
 
-
-            # Let's first check for terminal condition
+            # Even if the leaf is not alraedy marked as terminal, it still may be a new terminal node, so we need to check for that.
             # Note: since we are only storing the board state at the root, 
             # we need to step from root all the way down to the current node 
             # to cover the state corresponding to this node
