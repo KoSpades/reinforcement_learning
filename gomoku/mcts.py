@@ -17,7 +17,7 @@ class Node:
         parent: pointer to parent
         childen: a map of (action, Child_Node).
         is_terminal: Bool
-        winner: 0, 1, or None. It's 0 or 1 if is_terminal is True.
+        winner: 0, 1, 2, or -1. It's -1 if is_terminal is False.
         '''
         self.whose_turn = whose_turn
         self.P = P
@@ -27,7 +27,7 @@ class Node:
         self.parent = parent
         self.children = {}
         self.is_terminal = False
-        self.winner = None
+        self.winner = -1
 
     @property
     def Q(self):
@@ -39,8 +39,13 @@ class Node:
     def is_leaf(self):
         return not self.children
 
-    def update(self):
-        pass
+    def value_propagate(self, value):
+        cur_node = self
+        while cur_node is not None:
+            cur_node.N += 1
+            cur_node.W += value
+            value = -value
+            cur_node = cur_node.parent
 
 
 class Root(Node):
@@ -88,6 +93,11 @@ def mcts_action_selection(state, whose_turn, last_action, policy, total_sim=20):
             # There are two cases when a Node has no children
             # 1. It has not been expanded yet, but game isn't over.
             # 2. Game is at terminal state.
+
+            # It may be a terminal node already: in this case, we just want to propagate its actual value up
+            if cur_node.is_terminal:
+
+
             # Let's first check for terminal condition
             # Note: since we are only storing the board state at the root, 
             # we need to step from root all the way down to the current node 

@@ -574,8 +574,11 @@ MCTS in progress.
 
 ## 05/07/26
 
-### What's a good way for me to find all valid children for a board state?
+### More MCTS Question and Answers 
+1. What's a good way for me to find all valid children for a board state?
 - legal_actions = legal_mask.non_zero().flatten().tolist(). Then iterate over legal_actions. We will then use the values from action_probs outputted by the network to set each P for these newly created nodes.
+2. When we do value propagation for a leaf node, do we need to update states for the current leaf too? (its N and W)? How about for terminal nodes?
+- Yes. And the initial W for a non-terminal leaf is the value output from the NN, and the initial W for a terminal game is the actual game outcome (-1, 1, or 0).
 
 ## 05/08/26
 
