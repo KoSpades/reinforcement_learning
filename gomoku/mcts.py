@@ -183,4 +183,5 @@ if __name__ == "__main__":
     mcts_action_selection(state=cur_state, 
                           whose_turn=0, 
                           last_action=-1,
-                          policy=policy)
+                          policy=policy,
+                          total_sim=200)

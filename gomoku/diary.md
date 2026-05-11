@@ -610,4 +610,6 @@ More MCTS progress on node value propagation from terminal leaf node. Let's try 
 - Should remember to use torch.no_grad() if I am not intending to update the NN.
 - In implementation: we have to use -child.Q to calculate PUCT score, rather than child.Q, because we need to flip values when we change between players.
 
-MCTS done. :) Next steps: let's use this in action: i.e. use it in the UI to see MCTS in effect, we will also implement the tree structure reuse, so we don't have to rebuild the simulation tree from scratch every time we need to pick a move.
+MCTS done. :) Next steps: we will implement the tree structure reuse, so we don't have to rebuild the simulation tree from scratch every time we need to pick a move.
+
+We have wired in MCTS in the UI to see it in action. And there's some interesting "bug" already: black has 4 in-a-row, but NN predicted move isn't to win directly, but rather to skip one space. That option has a 99% chance, and win directly has a 1% chance. And apparently MCTS didn't actually help the agent to realize it should win immediately. We should investigate why and add some debugging here. 

@@ -10,7 +10,8 @@ import torch
 import torch.nn.functional as F
 from flask import Flask, redirect, render_template_string, request, url_for
 
-from config import BOARD_SIZE, UI_ITER, CURRENT_MODELS_DIR
+from config import BOARD_SIZE, UI_ITER, CURRENT_MODELS_DIR, USE_MCTS_UI
+from mcts import mcts_action_selection
 from model import PolicyNetwork
 from utils import check_win_cond, step
 
@@ -78,6 +79,19 @@ def select_policy_action(policy, state, policy_turn):
         return int(action_dist.sample().item())
 
 
+def select_ui_action(policy, state, policy_turn, last_action):
+    if check_win_cond(state, 1 - policy_turn, -1) == 2:
+        return None
+    if USE_MCTS_UI:
+        return mcts_action_selection(
+            state=state,
+            whose_turn=policy_turn,
+            last_action=last_action,
+            policy=policy,
+        )
+    return select_policy_action(policy, state, policy_turn)
+
+
 def analyze_policy_state(policy, state, policy_turn, top_k=3):
     if check_win_cond(state, 1 - policy_turn, -1) == 2:
         return [], 0.0
@@ -129,6 +143,7 @@ def initialize_game_state(policy, device, player_color):
             "game_over": False,
             "player_color": 0,
             "next_turn": 0,
+            "last_action": -1,
             "analysis": None,
         }
 
@@ -140,6 +155,7 @@ def initialize_game_state(policy, device, player_color):
             "game_over": True,
             "player_color": 1,
             "next_turn": None,
+            "last_action": -1,
             "analysis": None,
         }
 
@@ -149,6 +165,7 @@ def initialize_game_state(policy, device, player_color):
         "game_over": False,
         "player_color": 1,
         "next_turn": 0,
+        "last_action": -1,
         "analysis": {
             "moves": moves,
             "value": value,
@@ -167,6 +184,7 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
         "game_over": True,
         "player_color": None,
         "next_turn": None,
+        "last_action": -1,
         "analysis": None,
     }
 
@@ -546,6 +564,7 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
                 "game_over": True,
                 "player_color": player_color,
                 "next_turn": None,
+                "last_action": action,
                 "analysis": None,
             }
             return redirect(url_for("index"))
@@ -562,6 +581,7 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
             "game_over": False,
             "player_color": player_color,
             "next_turn": policy_color,
+            "last_action": action,
             "analysis": {
                 "moves": analysis_moves,
                 "value": analysis_value,
@@ -577,10 +597,16 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
         board = game_state["board"]
         player_color = game_state["player_color"]
         policy_color = 1 - player_color
+        last_action = game_state["last_action"]
         if game_state["next_turn"] != policy_color:
             return redirect(url_for("index"))
 
-        policy_action = select_policy_action(app.config["POLICY"], board, policy_turn=policy_color)
+        policy_action = select_ui_action(
+            app.config["POLICY"],
+            board,
+            policy_turn=policy_color,
+            last_action=last_action,
+        )
         if policy_action is None:
             app.config["GAME_STATE"] = {
                 "board": board,
@@ -588,6 +614,7 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
                 "game_over": True,
                 "player_color": player_color,
                 "next_turn": None,
+                "last_action": last_action,
                 "analysis": None,
             }
             return redirect(url_for("index"))
@@ -601,6 +628,7 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
             "game_over": outcome is not None,
             "player_color": player_color,
             "next_turn": None if outcome is not None else player_color,
+            "last_action": policy_action,
             "analysis": None,
         }
         return redirect(url_for("index"))
