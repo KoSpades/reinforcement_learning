@@ -588,3 +588,7 @@ Also did some code cleaning, including:
 - make the meaning of "whose_turn" consistent throughout the repo, and make check_win_cond documentation less confusing
 - reworked check_win_cond to handle draw games too, instead of having separate logic for it throughout the code.
 
+## 05/09/26
+
+More MCTS progress on node value propagation from terminal leaf node. Let's try to finish this tomorrow.
+

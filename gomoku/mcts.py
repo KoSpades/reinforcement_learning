@@ -55,7 +55,7 @@ class Root(Node):
         self.state = state
 
 
-def mcts_action_selection(state, whose_turn, last_action, policy, total_sim=20):
+def mcts_action_selection(state, whose_turn, last_action, policy: PolicyNetwork, total_sim=20):
     '''
     state: the current board state
     whose_turn: whose turn is it to take the next move
@@ -115,32 +115,42 @@ def mcts_action_selection(state, whose_turn, last_action, policy, total_sim=20):
             # to cover the state corresponding to this node
             cur_node_state = get_state_for_cur_node(cur_node)
             winner = check_win_cond(cur_node_state, 1 - cur_node.whose_turn, cur_node.action)
-            # TODO: from here
+            # Case 1: It actually is a new terminal node that we've just reached
+            # We need to set the right status for the current node, then back propagate
+            if winner > -1:
+                cur_node.is_terminal = True
+                cur_node.winner = winner
+                if cur_node.winner == 2:
+                    back_value = 0
+                elif 1 - cur_node.whose_turn == winner:
+                    back_value = -1
+                else:
+                    back_value = 1
+                cur_node.value_propagate(back_value)
+                num_sim += 1
+                continue
 
-
-            if not cur_node.is_terminal:
-                # Create all valid children 
-                policy_state = get_policy_state(cur_node_state, cur_node.whose_turn)
-                action_logits, cur_value = policy(policy_state.unsqueeze(0).to(device))
-                action_logits = action_logits.squeeze(0)
-                cur_value = cur_value.squeeze()
-                occupied_spaces = cur_node_state.sum(dim=0)
-                legal_mask = (occupied_spaces == 0).flatten().to(device)
-                masked_logits = action_logits.masked_fill(~legal_mask, float("-inf"))
-                action_dist = torch.distributions.Categorical(logits=masked_logits)
-                legal_actions = legal_mask.nonzero().flatten().tolist()
-                print(action_dist.probs)
-                print(legal_actions)
-                for action in legal_actions:
-                    child_node = Node(whose_turn=1 - cur_node.whose_turn, 
-                                      P=action_dist.probs[action].item(),
-                                      parent=cur_node,
-                                      action=action)
-                    cur_node.children[action] = child_node
-                # back propagate the value from NN from current node upwards
-                exit()
-            else:
-                pass
+            # Case 2: Game has not ended yet: we do a value propagate based on NN outputed value
+            policy_state = get_policy_state(cur_node_state, cur_node.whose_turn)
+            action_logits, cur_value = policy(policy_state.unsqueeze(0).to(device))
+            action_logits = action_logits.squeeze(0)
+            cur_value = cur_value.squeeze()
+            occupied_spaces = cur_node_state.sum(dim=0)
+            legal_mask = (occupied_spaces == 0).flatten().to(device)
+            masked_logits = action_logits.masked_fill(~legal_mask, float("-inf"))
+            action_dist = torch.distributions.Categorical(logits=masked_logits)
+            legal_actions = legal_mask.nonzero().flatten().tolist()
+            print(action_dist.probs)
+            print(legal_actions)
+            for action in legal_actions:
+                child_node = Node(whose_turn=1 - cur_node.whose_turn, 
+                                  P=action_dist.probs[action].item(),
+                                  parent=cur_node,
+                                  action=action)
+                cur_node.children[action] = child_node
+            # back propagate the value from NN from current node upwards
+            cur_node.value_propagate(cur_value.item())
+            num_sim += 1
         else:
             pass
 
