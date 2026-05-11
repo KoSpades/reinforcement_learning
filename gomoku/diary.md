@@ -579,6 +579,18 @@ MCTS in progress.
 - legal_actions = legal_mask.non_zero().flatten().tolist(). Then iterate over legal_actions. We will then use the values from action_probs outputted by the network to set each P for these newly created nodes.
 2. When we do value propagation for a leaf node, do we need to update states for the current leaf too? (its N and W)? How about for terminal nodes?
 - Yes. And the initial W for a non-terminal leaf is the value output from the NN, and the initial W for a terminal game is the actual game outcome (-1, 1, or 0).
+3. PUCT details:
+- During a simulation run, PUCT is used to decide which branch we shall take at a non-leaf node.
+
+$$
+\mathrm{PUCT}(s, a)
+=
+Q(s, a)
++ c \, P(s, a)\,\frac{\sqrt{N(s)}}{1 + N(s,a)}
+$$
+- Some meaning of the formula: Q is exploitation, because it is based on what we actually learned from the simulations. 
+- c is a parameter that controls exploitation, and the higher it is, the more we want to explore. We can just use 1 as a good reference value. 
+- Since N(s, a) is on the denominator: the smaller it is (less visited), the more we want to try it out.
 
 ## 05/08/26
 
@@ -592,3 +604,10 @@ Also did some code cleaning, including:
 
 More MCTS progress on node value propagation from terminal leaf node. Let's try to finish this tomorrow.
 
+## 05/10/26
+
+### Some MCTS coding bugs that I have made:
+- Should remember to use torch.no_grad() if I am not intending to update the NN.
+- In implementation: we have to use -child.Q to calculate PUCT score, rather than child.Q, because we need to flip values when we change between players.
+
+MCTS done. :) Next steps: let's use this in action: i.e. use it in the UI to see MCTS in effect, we will also implement the tree structure reuse, so we don't have to rebuild the simulation tree from scratch every time we need to pick a move.
