@@ -4,7 +4,7 @@ import torch
 
 from config import CURRENT_MODELS_DIR
 from model import PolicyNetwork
-from utils import check_win_cond, get_random_legal_move, step
+from utils import check_win_cond, get_policy_state, get_random_legal_move, step
 
 
 class Player:
@@ -32,11 +32,6 @@ class OurPlayer(Player):
                 self.policy.load_state_dict(state_dict)
             self.policy.eval()
 
-    def _policy_state(self, state, whose_turn):
-        if whose_turn == 0:
-            return state
-        return torch.stack([state[1], state[0]])
-
     def select_action(self, state, whose_turn, sample=False):
         """
         whose_turn: 0 if I am black, 1 if I am white.
@@ -47,7 +42,7 @@ class OurPlayer(Player):
                 return -1, None, None, None
             return -1
 
-        policy_state = self._policy_state(state, whose_turn)
+        policy_state = get_policy_state(state, whose_turn)
         # We randomly sample an action
         if sample:
             action_logits, cur_value = self.policy(policy_state.unsqueeze(0).to(self.device))
@@ -120,10 +115,7 @@ class FirstOpponent(Player):
         if check_win_cond(state, 1 - whose_turn, -1) == 2:
             return -1
 
-        if whose_turn == 0:
-            policy_state = state
-        else:
-            policy_state = torch.stack([state[1], state[0]])
+        policy_state = get_policy_state(state, whose_turn)
 
         with torch.no_grad():
             action_logits, value = self.policy(policy_state.unsqueeze(0).to(self.device))

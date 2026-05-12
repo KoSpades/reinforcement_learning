@@ -617,5 +617,19 @@ We have wired in MCTS in the UI to see it in action. And there's some interestin
 ## 05/11/26
 
 We first added a few UI side functionalities to better investigate MCTS behaviours:
-- For each move, we are printing out the top 3 MCTS moves's Q, P, the novelty of a node (sqrt(parent count) / child count), and the product of the last two terms.
+- For each move, we are printing out the top 3 MCTS moves's Q, P, the novelty of a node (sqrt(parent count) / child count), and exploration (the product of the last two terms). The PUCT score is just the sum of Q and exploration.
 - Added UNDO functionality from the player side for debugging.
+
+### MCTS Observations for the current configuraion (at C=1, simulations=200)
+- There are cases where the NN has a dominant prior over one move (>0.99). In that cases, all simulations are spent on that branch, and there are explorations happening. This is for C=1.
+- For branches (actions) that were never actually taken, their Q stays at zero. If their P is minimal (>0.01), then 200 simulations are not enough to give it a meaningful exploration term, and Q for the top move dominates the PUCT score due to have a high initial P.
+- For branches with P from 0.02 to 0.05, their exploration term do get higher in 200 sims (about 0.3 to 0.8), but the Q term for the top move still dominates. 
+- There are improvements though, which is huge. Here is one example we observed: The NN move A has P=0.8, move B has P=0.2 (the better move). And after the simulation, move B got Q=0.7 (N=150), and move A got Q=-0.9 (N=6). So the better move got picked. This is strong evidence that MCTS is actually leading our agent to play the better move.
+
+After studying these issues a bit closer, looking like we need to implement two things now:
+- First, search tree reuse: this is a must. We should look to implement a MCTS() class it looks like.
+- Dirichlet noise at Root node to force some explorations. This is what AlphaGo does, and it seems like a good idea to get around the extreme high prior (>0.99), so let's try that too.
+
+### Moving MCTS to a class
+- It will store many of the attributes that we are currently using in mcts_action_selection().
+- It will also have a root attribute, so that we can reuse subtress within an episode.

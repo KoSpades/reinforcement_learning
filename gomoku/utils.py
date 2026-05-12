@@ -3,6 +3,12 @@ import torch
 from config import BOARD_SIZE
 
 
+def get_policy_state(state, whose_turn):
+    if whose_turn == 0:
+        return state
+    return torch.stack([state[1], state[0]])
+
+
 def move_is_legal(state, action):
     """
     Checking whether a move is legal. Output True if yes.
@@ -90,7 +96,7 @@ def step(state, action, whose_turn):
         action:
             an integer from 0 to (BOARD_SIZE**2 - 1)
         whose_turn:
-            0 if black, 1 if white.
+            whose turn is it to play the action that advances the state. 0 if black, 1 if white.
     OUTPUT:
         the next state
     Note:

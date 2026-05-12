@@ -13,11 +13,12 @@ from flask import Flask, redirect, render_template_string, request, url_for
 from config import BOARD_SIZE, UI_ITER, CURRENT_MODELS_DIR, USE_MCTS_UI
 from mcts import mcts_action_selection
 from model import PolicyNetwork
-from utils import check_win_cond, step
+from utils import check_win_cond, get_policy_state, step
 
 
 DEFAULT_MODEL_PATH = CURRENT_MODELS_DIR / f"final_policy_{UI_ITER}.pt"
 MCTS_UI_SIMS = 200
+MAX_UNDO_MOVES = 5
 
 
 def get_device():
@@ -64,10 +65,7 @@ def select_policy_action(policy, state, policy_turn):
     if check_win_cond(state, 1 - policy_turn, -1) == 2:
         return None
 
-    if policy_turn == 0:
-        policy_state = state
-    else:
-        policy_state = torch.stack([state[1], state[0]])
+    policy_state = get_policy_state(state, policy_turn)
 
     with torch.no_grad():
         action_logits, value = policy(policy_state.unsqueeze(0))
@@ -98,10 +96,7 @@ def analyze_policy_state(policy, state, policy_turn, top_k=3, last_action=-1, us
     if check_win_cond(state, 1 - policy_turn, -1) == 2:
         return [], 0.0, None
 
-    if policy_turn == 0:
-        policy_state = state
-    else:
-        policy_state = torch.stack([state[1], state[0]])
+    policy_state = get_policy_state(state, policy_turn)
 
     with torch.no_grad():
         action_logits, value = policy(policy_state.unsqueeze(0))
@@ -174,7 +169,13 @@ def make_undo_snapshot(game_state):
     }
 
 
-def restore_undo_snapshot(snapshot, message):
+def push_undo_snapshot(game_state):
+    undo_stack = list(game_state.get("undo_stack") or [])
+    undo_stack.append(make_undo_snapshot(game_state))
+    return undo_stack[-MAX_UNDO_MOVES:]
+
+
+def restore_undo_snapshot(snapshot, undo_stack, message):
     return {
         "board": snapshot["board"].clone(),
         "message": message,
@@ -183,15 +184,15 @@ def restore_undo_snapshot(snapshot, message):
         "next_turn": snapshot["next_turn"],
         "last_action": snapshot["last_action"],
         "analysis": snapshot["analysis"],
-        "undo_state": None,
+        "undo_stack": undo_stack,
     }
 
 
 def can_undo_player_move(game_state):
     player_color = game_state["player_color"]
-    if game_state.get("undo_state") is None or player_color is None:
+    if not game_state.get("undo_stack") or player_color is None:
         return False
-    return game_state["game_over"] or game_state["next_turn"] == 1 - player_color
+    return True
 
 
 def initialize_game_state(policy, device, player_color):
@@ -205,7 +206,7 @@ def initialize_game_state(policy, device, player_color):
             "next_turn": 0,
             "last_action": -1,
             "analysis": None,
-            "undo_state": None,
+            "undo_stack": [],
         }
 
     moves, value, selected_action = analyze_policy_state(
@@ -225,7 +226,7 @@ def initialize_game_state(policy, device, player_color):
             "next_turn": None,
             "last_action": -1,
             "analysis": None,
-            "undo_state": None,
+            "undo_stack": [],
         }
 
     return {
@@ -240,7 +241,7 @@ def initialize_game_state(policy, device, player_color):
             "value": value,
             "selected_action": selected_action,
         },
-        "undo_state": None,
+        "undo_stack": [],
     }
 
 
@@ -257,7 +258,7 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
         "next_turn": None,
         "last_action": -1,
         "analysis": None,
-        "undo_state": None,
+        "undo_stack": [],
     }
 
     template = """
@@ -660,7 +661,9 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
                 <button type="submit" name="player_color" value="1">Play White</button>
               </form>
               <form method="post" action="{{ url_for('undo_move') }}">
-                <button type="submit" {% if not can_undo %}disabled{% endif %}>Undo</button>
+                <button type="submit" {% if not can_undo %}disabled{% endif %}>
+                  Undo{% if undo_count %} {{ undo_count }}{% endif %}
+                </button>
               </form>
             </div>
             <div class="message"><span>{{ message }}</span></div>
@@ -713,11 +716,11 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
                       <div class="mcts-grid">
                         <span class="mcts-label">Q</span>
                         <span class="mcts-value">{{ "%.4f"|format(move.q) }}</span>
-                        <span class="mcts-label">Scaled Explore</span>
+                        <span class="mcts-label">Exploration</span>
                         <span class="mcts-value">{{ "%.4f"|format(move.prior_boost) }}</span>
                         <span class="mcts-label">P</span>
                         <span class="mcts-value">{{ "%.4f"|format(move.p) }}</span>
-                        <span class="mcts-label">Explore</span>
+                        <span class="mcts-label">Node Novelty</span>
                         <span class="mcts-value">{{ "%.4f"|format(move.exploration) }}</span>
                       </div>
                     </div>
@@ -745,13 +748,15 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
     @app.post("/undo")
     def undo_move():
         game_state = app.config["GAME_STATE"]
-        undo_state = game_state.get("undo_state")
         if not can_undo_player_move(game_state):
             return redirect(url_for("index"))
 
+        undo_stack = list(game_state.get("undo_stack") or [])
+        undo_state = undo_stack.pop()
         app.config["GAME_STATE"] = restore_undo_snapshot(
             undo_state,
-            "Move undone. Place a different move.",
+            undo_stack,
+            f"Move undone. {len(undo_stack)} undo{'s' if len(undo_stack) != 1 else ''} left.",
         )
         return redirect(url_for("index"))
 
@@ -771,7 +776,7 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
         if game_state["next_turn"] != player_color:
             return redirect(url_for("index"))
 
-        undo_state = make_undo_snapshot(game_state)
+        undo_stack = push_undo_snapshot(game_state)
         try:
             board = step(board, action, whose_turn=player_color)
         except ValueError:
@@ -788,7 +793,7 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
                 "next_turn": None,
                 "last_action": action,
                 "analysis": None,
-                "undo_state": undo_state,
+                "undo_stack": undo_stack,
             }
             return redirect(url_for("index"))
 
@@ -812,7 +817,7 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
                 "value": analysis_value,
                 "selected_action": selected_action,
             },
-            "undo_state": undo_state,
+            "undo_stack": undo_stack,
         }
         return redirect(url_for("index"))
 
@@ -848,7 +853,7 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
                 "next_turn": None,
                 "last_action": last_action,
                 "analysis": None,
-                "undo_state": None,
+                "undo_stack": game_state.get("undo_stack") or [],
             }
             return redirect(url_for("index"))
 
@@ -863,7 +868,7 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
             "next_turn": None if outcome is not None else player_color,
             "last_action": policy_action,
             "analysis": None,
-            "undo_state": None,
+            "undo_stack": game_state.get("undo_stack") or [],
         }
         return redirect(url_for("index"))
 
@@ -892,6 +897,7 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
             analysis=analysis,
             analysis_by_action=analysis_by_action,
             can_undo=can_undo_player_move(game_state),
+            undo_count=len(game_state.get("undo_stack") or []),
         )
 
     return app
