@@ -74,7 +74,14 @@ class MCTS:
                  policy: PolicyNetwork, 
                  exploration_coef=1, 
                  total_sim_for_one_move=20):
-        self.root = Root(whose_turn=whose_turn, P=0, N=0, W=0, parent=None, action=last_action, state=state, children={})
+        self.root = Root(whose_turn=whose_turn, 
+                         P=0, 
+                         N=0, 
+                         W=0, 
+                         parent=None, 
+                         action=last_action, 
+                         state=state, 
+                         children={})
         self.policy = policy
         self.device = next(self.policy.parameters()).device
         self.exploration_coef = exploration_coef
@@ -209,6 +216,36 @@ class MCTS:
             child.parent = self.root
 
         return best_action, root_info
+    
+    def advance_root(self, action):
+        '''
+        action: an incoming action that would lead to a board change.
+        We need to update the self.root accordingly.
+        Note: player that took this action is the same as Root's whose_turn.
+        '''
+        # Two cases: if action is in Root's children, we reuse. Else start a fresh root node.
+        new_root_state = step(self.root.state, action, self.root.whose_turn)
+        if action in self.root.children:
+            self.root = Root(whose_turn=1-self.root.whose_turn, 
+                             P=0, 
+                             N=self.root.children[action].N,
+                             W=self.root.children[action].W,
+                             parent=None, 
+                             action=action, 
+                             state=new_root_state, 
+                             children=self.root.children[action].children)
+        
+            for _, child in self.root.children.items():
+                child.parent = self.root
+        else:
+            self.root = Root(whose_turn=1-self.root.whose_turn, 
+                             P=0, 
+                             N=0,
+                             W=0,
+                             parent=None, 
+                             action=action, 
+                             state=new_root_state, 
+                             children={})
 
 
 if __name__ == "__main__":

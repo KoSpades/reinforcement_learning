@@ -633,3 +633,7 @@ After studying these issues a bit closer, looking like we need to implement two 
 ### Moving MCTS to a class
 - It will store many of the attributes that we are currently using in mcts_action_selection().
 - It will also have a root attribute, so that we can reuse subtress within an episode.
+
+Encountered a bug in implementation: we need to enable an "advance root" functionality in MCTS class, so that on the UI side it has the right info. Without this functionality, after a human player makes a move, MCTS would have the wrong Root to pick an action for (i.e. missing the human move completely).
+
+Finished MCTS class refactoring and subtree reuse. Will add the Dirichlet noise tomorrow.
