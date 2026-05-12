@@ -56,7 +56,16 @@ class Root(Node):
         self.state = state
 
 
-def mcts_action_selection(state, whose_turn, last_action, policy: PolicyNetwork, exploration_coef=1, total_sim=20):
+def mcts_action_selection(
+    state,
+    whose_turn,
+    last_action,
+    policy: PolicyNetwork,
+    exploration_coef=1,
+    total_sim=20,
+    return_counts=False,
+    return_stats=False,
+):
     '''
     state: the current board state
     whose_turn: whose turn is it to take the next move
@@ -88,7 +97,7 @@ def mcts_action_selection(state, whose_turn, last_action, policy: PolicyNetwork,
             cur_whose_turn = 1 - cur_whose_turn
         return cur_state
 
-    while(num_sim < total_sim):
+    while(num_sim <= total_sim):
 
         # First Big Case: leaf node expansion (i.e. Nodes with no children)
         if cur_node.is_leaf:
@@ -147,9 +156,9 @@ def mcts_action_selection(state, whose_turn, last_action, policy: PolicyNetwork,
                 legal_actions = legal_mask.nonzero().flatten().tolist()
                 for action in legal_actions:
                     child_node = Node(whose_turn=1 - cur_node.whose_turn, 
-                                    P=action_dist.probs[action].item(),
-                                    parent=cur_node,
-                                    action=action)
+                                      P=action_dist.probs[action].item(),
+                                      parent=cur_node,
+                                      action=action)
                     cur_node.children[action] = child_node
                 # back propagate the value from NN from current node upwards
                 cur_node.value_propagate(cur_value.item())
@@ -167,7 +176,25 @@ def mcts_action_selection(state, whose_turn, last_action, policy: PolicyNetwork,
     # Finally, choose the action corresponding to Root's children with the highest count N
     best_action = max(root.children,
                       key=lambda action: root.children[action].N)
-    
+
+    if return_stats:
+        return best_action, {
+            action: {
+                "N": child.N,
+                "Q": -child.Q,
+                "P": child.P,
+                "exploration": math.sqrt(root.N) / (1 + child.N),
+                "prior_boost": child.P * (math.sqrt(root.N) / (1 + child.N)),
+            }
+            for action, child in root.children.items()
+        }
+
+    if return_counts:
+        return best_action, {
+            action: child.N
+            for action, child in root.children.items()
+        }
+
     return best_action
 
 
@@ -183,5 +210,4 @@ if __name__ == "__main__":
     mcts_action_selection(state=cur_state, 
                           whose_turn=0, 
                           last_action=-1,
-                          policy=policy,
-                          total_sim=200)
+                          policy=policy)

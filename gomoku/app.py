@@ -17,6 +17,7 @@ from utils import check_win_cond, step
 
 
 DEFAULT_MODEL_PATH = CURRENT_MODELS_DIR / f"final_policy_{UI_ITER}.pt"
+MCTS_UI_SIMS = 200
 
 
 def get_device():
@@ -88,13 +89,14 @@ def select_ui_action(policy, state, policy_turn, last_action):
             whose_turn=policy_turn,
             last_action=last_action,
             policy=policy,
+            total_sim=MCTS_UI_SIMS,
         )
     return select_policy_action(policy, state, policy_turn)
 
 
-def analyze_policy_state(policy, state, policy_turn, top_k=3):
+def analyze_policy_state(policy, state, policy_turn, top_k=3, last_action=-1, use_mcts=False):
     if check_win_cond(state, 1 - policy_turn, -1) == 2:
-        return [], 0.0
+        return [], 0.0, None
 
     if policy_turn == 0:
         policy_state = state
@@ -110,17 +112,43 @@ def analyze_policy_state(policy, state, policy_turn, top_k=3):
 
         masked_logits = action_logits.masked_fill(~legal_mask, float("-inf"))
         action_probs = F.softmax(masked_logits, dim=-1)
-        top_probs, top_actions = torch.topk(action_probs, k=min(top_k, int(legal_mask.sum().item())))
+        legal_count = int(legal_mask.sum().item())
+        _, top_actions = torch.topk(action_probs, k=min(top_k, legal_count))
+        sorted_actions = top_actions.tolist()
+        selected_action = None
+        mcts_stats = {}
+        if use_mcts:
+            selected_action, mcts_stats = mcts_action_selection(
+                state=state,
+                whose_turn=policy_turn,
+                last_action=last_action,
+                policy=policy,
+                total_sim=MCTS_UI_SIMS,
+                return_stats=True,
+            )
+            sorted_actions = sorted(
+                mcts_stats,
+                key=lambda action: (mcts_stats[action]["N"], float(action_probs[action].item())),
+                reverse=True,
+            )[:top_k]
 
     ranked_moves = []
-    for action, prob in zip(top_actions.tolist(), top_probs.tolist()):
+    for action in sorted_actions:
+        prob = float(action_probs[action].item())
+        stats = mcts_stats.get(action, {})
         ranked_moves.append({
             "action": action,
             "row": action // BOARD_SIZE,
             "col": action % BOARD_SIZE,
+            "prob": prob,
             "prob_pct": round(prob * 100),
+            "mcts_count": stats.get("N"),
+            "q": stats.get("Q"),
+            "p": stats.get("P"),
+            "exploration": stats.get("exploration"),
+            "prior_boost": stats.get("prior_boost"),
         })
-    return ranked_moves, value
+    return ranked_moves, value, selected_action
 
 
 def evaluate_outcome(state, last_player, action):
@@ -134,6 +162,38 @@ def evaluate_outcome(state, last_player, action):
     return None
 
 
+def make_undo_snapshot(game_state):
+    return {
+        "board": game_state["board"].clone(),
+        "message": game_state["message"],
+        "game_over": game_state["game_over"],
+        "player_color": game_state["player_color"],
+        "next_turn": game_state["next_turn"],
+        "last_action": game_state["last_action"],
+        "analysis": game_state["analysis"],
+    }
+
+
+def restore_undo_snapshot(snapshot, message):
+    return {
+        "board": snapshot["board"].clone(),
+        "message": message,
+        "game_over": snapshot["game_over"],
+        "player_color": snapshot["player_color"],
+        "next_turn": snapshot["next_turn"],
+        "last_action": snapshot["last_action"],
+        "analysis": snapshot["analysis"],
+        "undo_state": None,
+    }
+
+
+def can_undo_player_move(game_state):
+    player_color = game_state["player_color"]
+    if game_state.get("undo_state") is None or player_color is None:
+        return False
+    return game_state["game_over"] or game_state["next_turn"] == 1 - player_color
+
+
 def initialize_game_state(policy, device, player_color):
     board = empty_board(device=device)
     if player_color == 0:
@@ -145,9 +205,17 @@ def initialize_game_state(policy, device, player_color):
             "next_turn": 0,
             "last_action": -1,
             "analysis": None,
+            "undo_state": None,
         }
 
-    moves, value = analyze_policy_state(policy, board, policy_turn=0, top_k=3)
+    moves, value, selected_action = analyze_policy_state(
+        policy,
+        board,
+        policy_turn=0,
+        top_k=3,
+        last_action=-1,
+        use_mcts=USE_MCTS_UI,
+    )
     if not moves:
         return {
             "board": board,
@@ -157,6 +225,7 @@ def initialize_game_state(policy, device, player_color):
             "next_turn": None,
             "last_action": -1,
             "analysis": None,
+            "undo_state": None,
         }
 
     return {
@@ -169,7 +238,9 @@ def initialize_game_state(policy, device, player_color):
         "analysis": {
             "moves": moves,
             "value": value,
+            "selected_action": selected_action,
         },
+        "undo_state": None,
     }
 
 
@@ -186,6 +257,7 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
         "next_turn": None,
         "last_action": -1,
         "analysis": None,
+        "undo_state": None,
     }
 
     template = """
@@ -200,7 +272,8 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
           color-scheme: light;
           --bg: #efe2c4;
           --bg-deep: #d6b983;
-          --panel: rgba(255, 249, 236, 0.76);
+          --panel: rgba(255, 249, 236, 0.82);
+          --surface: rgba(255, 252, 243, 0.86);
           --board: #c89d62;
           --board-line: rgba(70, 45, 20, 0.48);
           --text: #24170d;
@@ -210,103 +283,127 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
           --stone-white: #fbf7ef;
           --shadow: rgba(64, 34, 15, 0.18);
         }
+        html,
+        body {
+          height: 100%;
+          overflow: hidden;
+        }
         body {
           margin: 0;
-          min-height: 100vh;
+          height: 100vh;
+          height: 100dvh;
           font-family: Georgia, "Times New Roman", serif;
-          background:
-            radial-gradient(circle at top, rgba(255, 252, 243, 0.95), transparent 32%),
-            linear-gradient(180deg, #f8edd5 0%, var(--bg) 42%, var(--bg-deep) 100%);
+          background: #efe2c4;
           color: var(--text);
         }
         main {
-          max-width: 860px;
+          max-width: 1120px;
           margin: 0 auto;
-          min-height: 100dvh;
+          height: 100dvh;
           box-sizing: border-box;
           display: flex;
           flex-direction: column;
           justify-content: flex-start;
-          padding: 16px 16px 18px;
-        }
-        p {
-          margin: 0 0 10px;
-          line-height: 1.35;
-          max-width: none;
-          font-size: 0.92rem;
-          color: rgba(36, 23, 13, 0.78);
+          padding: clamp(6px, 1.5vh, 14px) clamp(8px, 2vw, 16px);
         }
         .panel {
           background: var(--panel);
           border: 1px solid rgba(102, 66, 32, 0.18);
-          border-radius: 28px;
-          padding: 16px;
-          box-shadow: 0 24px 54px var(--shadow);
+          border-radius: 20px;
+          padding: clamp(8px, 1.5vh, 14px);
+          box-shadow: 0 12px 26px var(--shadow);
           backdrop-filter: blur(10px);
           display: flex;
           flex-direction: column;
           align-items: stretch;
+          flex: 1 1 auto;
+          min-height: 0;
+          overflow: hidden;
         }
         .status-area {
           display: grid;
-          grid-template-rows: 52px 56px;
-          gap: 12px;
-          margin-bottom: 12px;
+          grid-template-columns: auto minmax(0, 1fr);
+          gap: 8px;
+          margin-bottom: clamp(6px, 1.3vh, 10px);
           flex: 0 0 auto;
+          align-items: stretch;
         }
         .toolbar {
           display: flex;
-          flex-wrap: nowrap;
+          flex-wrap: wrap;
           justify-content: flex-start;
           align-items: center;
-          gap: 10px;
-          min-height: 52px;
+          gap: 6px;
+          min-height: 0;
+        }
+        .toolbar form {
+          display: flex;
+          gap: 6px;
+          margin: 0;
         }
         .message {
-          font-size: 0.96rem;
+          font-size: clamp(0.76rem, 1.8vh, 0.92rem);
           font-weight: 600;
-          padding: 8px 12px;
-          border-radius: 999px;
-          background: rgba(255, 252, 243, 0.85);
+          padding: 6px 10px;
+          border-radius: 12px;
+          background: var(--surface);
           border: 1px solid rgba(122, 62, 29, 0.12);
-          min-height: 22px;
           display: flex;
           align-items: center;
+          overflow: hidden;
+          line-height: 1.18;
+          min-width: 0;
+        }
+        .message span {
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
           overflow: hidden;
         }
         .toolbar button {
           border: 1px solid rgba(0, 0, 0, 0.06);
           border-radius: 999px;
-          padding: 9px 15px;
+          padding: 7px 11px;
           background: var(--accent);
           color: white;
           font: inherit;
+          font-size: clamp(0.76rem, 1.8vh, 0.92rem);
           font-weight: 600;
           cursor: pointer;
-          box-shadow: 0 10px 20px rgba(122, 62, 29, 0.18);
+          box-shadow: 0 6px 14px rgba(122, 62, 29, 0.18);
           transition: transform 120ms ease, background 120ms ease;
+          white-space: nowrap;
         }
         .toolbar button:hover {
           background: var(--accent-dark);
           transform: translateY(-1px);
         }
-        .message-row {
-          min-height: 56px;
-          display: flex;
-          align-items: center;
+        .toolbar button[disabled] {
+          background: rgba(122, 62, 29, 0.38);
+          cursor: not-allowed;
+          transform: none;
+          box-shadow: none;
+        }
+        .game-area {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) minmax(190px, 240px);
+          gap: clamp(8px, 1.6vw, 16px);
+          align-items: start;
+          min-height: 0;
+          flex: 1 1 auto;
         }
         .board {
           display: grid;
           grid-template-columns: repeat({{ board_size }}, minmax(0, 1fr));
           gap: 0;
-          width: min(100%, min(74vh, 74vw));
+          width: min(100%, calc(100dvh - 112px), 760px);
           aspect-ratio: 1;
           margin: 0 auto;
-          flex: 0 0 auto;
+          flex: 0 1 auto;
           box-sizing: border-box;
           position: relative;
           overflow: hidden;
-          border-radius: 26px;
+          border-radius: 18px;
           background:
             linear-gradient(180deg, rgba(255, 241, 214, 0.45), rgba(151, 105, 47, 0.12)),
             var(--board);
@@ -427,57 +524,134 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
           pointer-events: none;
         }
         .hint-rank {
-          font-size: 0.68rem;
+          font-size: clamp(0.54rem, 1.55vh, 0.76rem);
           font-weight: 700;
           letter-spacing: 0.06em;
           line-height: 1;
         }
         .hint-prob {
-          margin-top: 3px;
-          font-size: 0.78rem;
+          margin-top: 2px;
+          font-size: clamp(0.62rem, 1.75vh, 0.88rem);
           font-weight: 700;
           line-height: 1;
         }
+        .hint-count {
+          margin-top: 2px;
+          font-size: clamp(0.52rem, 1.42vh, 0.72rem);
+          font-weight: 700;
+          line-height: 1;
+          opacity: 0.92;
+        }
         .board-value {
           position: absolute;
-          right: 12px;
-          top: 12px;
+          right: 8px;
+          top: 8px;
           z-index: 3;
-          padding: 6px 10px;
+          padding: 5px 8px;
           border-radius: 999px;
           background: rgba(255, 252, 243, 0.92);
           border: 1px solid rgba(122, 62, 29, 0.12);
           color: var(--text);
-          font-size: 0.8rem;
+          font-size: clamp(0.62rem, 1.6vh, 0.8rem);
           font-weight: 700;
           pointer-events: none;
         }
+        .mcts-panel {
+          align-self: stretch;
+          min-height: 0;
+          padding: 12px;
+          border-radius: 14px;
+          background: var(--surface);
+          border: 1px solid rgba(122, 62, 29, 0.12);
+          box-sizing: border-box;
+          overflow: hidden;
+        }
+        .mcts-title {
+          display: flex;
+          justify-content: space-between;
+          gap: 8px;
+          margin-bottom: 10px;
+          font-size: clamp(0.84rem, 1.9vh, 0.96rem);
+          font-weight: 700;
+          color: rgba(36, 23, 13, 0.72);
+        }
+        .mcts-list {
+          display: grid;
+          gap: 8px;
+        }
+        .mcts-move {
+          border-radius: 12px;
+          overflow: hidden;
+          background: rgba(255, 249, 236, 0.9);
+          border: 1px solid rgba(122, 62, 29, 0.12);
+        }
+        .mcts-head {
+          display: flex;
+          justify-content: space-between;
+          gap: 8px;
+          padding: 7px 9px;
+          background: rgba(122, 62, 29, 0.08);
+          font-size: clamp(0.82rem, 1.9vh, 0.94rem);
+          font-weight: 700;
+        }
+        .mcts-grid {
+          display: grid;
+          grid-template-columns: auto minmax(0, 1fr);
+          gap: 0;
+          font-size: clamp(0.78rem, 1.75vh, 0.9rem);
+          line-height: 1.16;
+          font-variant-numeric: tabular-nums;
+        }
+        .mcts-label {
+          padding: 7px 0 7px 9px;
+          color: rgba(36, 23, 13, 0.64);
+          border-top: 1px solid rgba(122, 62, 29, 0.08);
+        }
+        .mcts-value {
+          padding: 7px 9px 7px 0;
+          text-align: right;
+          font-weight: 700;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          border-top: 1px solid rgba(122, 62, 29, 0.08);
+        }
         @media (max-width: 640px) {
           .status-area {
-            grid-template-rows: 88px 64px;
-          }
-          .toolbar {
-            flex-wrap: wrap;
+            grid-template-columns: 1fr;
           }
           main {
-            padding: 10px 10px 14px;
+            padding: 6px;
           }
           .panel {
-            padding: 10px;
-            border-radius: 22px;
+            padding: 7px;
+            border-radius: 16px;
+          }
+          .game-area {
+            grid-template-columns: 1fr;
+            gap: 6px;
           }
           .board {
-            width: min(100%, calc(100vh - 150px));
+            width: min(100%, calc(100dvh - 122px));
           }
-          .message {
-            font-size: 0.9rem;
+          .mcts-panel {
+            display: none;
+          }
+        }
+        @media (max-width: 860px) {
+          .game-area {
+            grid-template-columns: 1fr;
+          }
+          .mcts-panel {
+            display: none;
+          }
+          .board {
+            width: min(100%, calc(100dvh - 122px));
           }
         }
       </style>
     </head>
     <body>
       <main>
-        <p>The saved weights are loaded from <code>{{ model_path }}</code>. Choose Black or White for each new game.</p>
         <section class="panel">
           <div class="status-area">
             <div class="toolbar">
@@ -485,38 +659,72 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
                 <button type="submit" name="player_color" value="0">Play Black</button>
                 <button type="submit" name="player_color" value="1">Play White</button>
               </form>
+              <form method="post" action="{{ url_for('undo_move') }}">
+                <button type="submit" {% if not can_undo %}disabled{% endif %}>Undo</button>
+              </form>
             </div>
-            <div class="message-row">
-              <div class="message">{{ message }}</div>
-            </div>
+            <div class="message"><span>{{ message }}</span></div>
           </div>
-          <div class="board">
-            {% if analysis %}
-              <div class="board-value">Value {{ "%.3f"|format(analysis.value) }}</div>
-            {% endif %}
-            {% for row_idx in range(board_size) %}
-              {% for col_idx in range(board_size) %}
-                {% set cell = board[row_idx][col_idx] %}
-                {% set action = row_idx * board_size + col_idx %}
-                {% set hint = analysis_by_action.get(action) %}
-                <form class="cell-form" method="post" action="{{ url_for('board_click') }}">
-                  <input type="hidden" name="action" value="{{ action }}">
-                  <button
-                    class="cell {% if cell == 'B' %}black{% elif cell == 'W' %}white{% else %}empty{% endif %}"
-                    type="submit"
-                    {% if game_over or (next_turn == player_color and cell) %}disabled{% endif %}
-                  >
-                    <span class="stone"></span>
-                    {% if hint and not cell %}
-                      <span class="hint">
-                        <span class="hint-rank">#{{ hint.rank }}</span>
-                        <span class="hint-prob">{{ hint.prob_pct }}%</span>
-                      </span>
-                    {% endif %}
-                  </button>
-                </form>
+          <div class="game-area">
+            <div class="board">
+              {% if analysis %}
+                <div class="board-value">Value {{ "%.3f"|format(analysis.value) }}</div>
+              {% endif %}
+              {% for row_idx in range(board_size) %}
+                {% for col_idx in range(board_size) %}
+                  {% set cell = board[row_idx][col_idx] %}
+                  {% set action = row_idx * board_size + col_idx %}
+                  {% set hint = analysis_by_action.get(action) %}
+                  <form class="cell-form" method="post" action="{{ url_for('board_click') }}">
+                    <input type="hidden" name="action" value="{{ action }}">
+                    <button
+                      class="cell {% if cell == 'B' %}black{% elif cell == 'W' %}white{% else %}empty{% endif %}"
+                      type="submit"
+                      {% if game_over or (next_turn == player_color and cell) %}disabled{% endif %}
+                    >
+                      <span class="stone"></span>
+                      {% if hint and not cell %}
+                        <span class="hint">
+                          <span class="hint-rank">#{{ hint.rank }}</span>
+                          <span class="hint-prob">{{ hint.prob_pct }}%</span>
+                          {% if hint.mcts_count is not none %}
+                            <span class="hint-count">N={{ hint.mcts_count }}</span>
+                          {% endif %}
+                        </span>
+                      {% endif %}
+                    </button>
+                  </form>
+                {% endfor %}
               {% endfor %}
-            {% endfor %}
+            </div>
+            <aside class="mcts-panel" aria-label="MCTS root statistics">
+              {% if analysis and analysis.moves and analysis.moves[0].q is not none %}
+                <div class="mcts-title">
+                  <span>Top MCTS moves</span>
+                  <span>N={{ analysis.moves | sum(attribute='mcts_count') }}</span>
+                </div>
+                <div class="mcts-list">
+                  {% for move in analysis.moves %}
+                    <div class="mcts-move">
+                      <div class="mcts-head">
+                        <span>#{{ loop.index }}</span>
+                        <span>N={{ move.mcts_count }}</span>
+                      </div>
+                      <div class="mcts-grid">
+                        <span class="mcts-label">Q</span>
+                        <span class="mcts-value">{{ "%.4f"|format(move.q) }}</span>
+                        <span class="mcts-label">Scaled Explore</span>
+                        <span class="mcts-value">{{ "%.4f"|format(move.prior_boost) }}</span>
+                        <span class="mcts-label">P</span>
+                        <span class="mcts-value">{{ "%.4f"|format(move.p) }}</span>
+                        <span class="mcts-label">Explore</span>
+                        <span class="mcts-value">{{ "%.4f"|format(move.exploration) }}</span>
+                      </div>
+                    </div>
+                  {% endfor %}
+                </div>
+              {% endif %}
+            </aside>
           </div>
         </section>
       </main>
@@ -531,6 +739,19 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
             app.config["POLICY"],
             app.config["DEVICE"],
             player_color,
+        )
+        return redirect(url_for("index"))
+
+    @app.post("/undo")
+    def undo_move():
+        game_state = app.config["GAME_STATE"]
+        undo_state = game_state.get("undo_state")
+        if not can_undo_player_move(game_state):
+            return redirect(url_for("index"))
+
+        app.config["GAME_STATE"] = restore_undo_snapshot(
+            undo_state,
+            "Move undone. Place a different move.",
         )
         return redirect(url_for("index"))
 
@@ -550,6 +771,7 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
         if game_state["next_turn"] != player_color:
             return redirect(url_for("index"))
 
+        undo_state = make_undo_snapshot(game_state)
         try:
             board = step(board, action, whose_turn=player_color)
         except ValueError:
@@ -566,14 +788,17 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
                 "next_turn": None,
                 "last_action": action,
                 "analysis": None,
+                "undo_state": undo_state,
             }
             return redirect(url_for("index"))
 
-        analysis_moves, analysis_value = analyze_policy_state(
+        analysis_moves, analysis_value, selected_action = analyze_policy_state(
             app.config["POLICY"],
             board,
             policy_color,
             top_k=3,
+            last_action=action,
+            use_mcts=USE_MCTS_UI,
         )
         app.config["GAME_STATE"] = {
             "board": board,
@@ -585,7 +810,9 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
             "analysis": {
                 "moves": analysis_moves,
                 "value": analysis_value,
+                "selected_action": selected_action,
             },
+            "undo_state": undo_state,
         }
         return redirect(url_for("index"))
 
@@ -601,12 +828,17 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
         if game_state["next_turn"] != policy_color:
             return redirect(url_for("index"))
 
-        policy_action = select_ui_action(
-            app.config["POLICY"],
-            board,
-            policy_turn=policy_color,
-            last_action=last_action,
-        )
+        analysis = game_state["analysis"]
+        policy_action = None
+        if USE_MCTS_UI and analysis is not None:
+            policy_action = analysis.get("selected_action")
+        if policy_action is None:
+            policy_action = select_ui_action(
+                app.config["POLICY"],
+                board,
+                policy_turn=policy_color,
+                last_action=last_action,
+            )
         if policy_action is None:
             app.config["GAME_STATE"] = {
                 "board": board,
@@ -616,6 +848,7 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
                 "next_turn": None,
                 "last_action": last_action,
                 "analysis": None,
+                "undo_state": None,
             }
             return redirect(url_for("index"))
 
@@ -630,6 +863,7 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
             "next_turn": None if outcome is not None else player_color,
             "last_action": policy_action,
             "analysis": None,
+            "undo_state": None,
         }
         return redirect(url_for("index"))
 
@@ -643,6 +877,7 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
                 analysis_by_action[move["action"]] = {
                     "rank": idx,
                     "prob_pct": move["prob_pct"],
+                    "mcts_count": move["mcts_count"],
                 }
         return render_template_string(
             template,
@@ -656,6 +891,7 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
             next_turn=game_state["next_turn"],
             analysis=analysis,
             analysis_by_action=analysis_by_action,
+            can_undo=can_undo_player_move(game_state),
         )
 
     return app

@@ -613,3 +613,9 @@ More MCTS progress on node value propagation from terminal leaf node. Let's try 
 MCTS done. :) Next steps: we will implement the tree structure reuse, so we don't have to rebuild the simulation tree from scratch every time we need to pick a move.
 
 We have wired in MCTS in the UI to see it in action. And there's some interesting "bug" already: black has 4 in-a-row, but NN predicted move isn't to win directly, but rather to skip one space. That option has a 99% chance, and win directly has a 1% chance. And apparently MCTS didn't actually help the agent to realize it should win immediately. We should investigate why and add some debugging here. 
+
+## 05/11/26
+
+We first added a few UI side functionalities to better investigate MCTS behaviours:
+- For each move, we are printing out the top 3 MCTS moves's Q, P, the novelty of a node (sqrt(parent count) / child count), and the product of the last two terms.
+- Added UNDO functionality from the player side for debugging.
