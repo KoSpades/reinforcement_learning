@@ -653,3 +653,5 @@ $$P_{noise}(s, a) = (1 - \epsilon)P_{NN}(s, a) + \epsilon\eta_a$$
 
 Sampling from the Dirichlet noise in torch: noise = torch.distributions.Dirichlet(torch.full((len(actions),), self.dirichlet_alpha, device=self.device)).sample()
 - This returns a 1D tensor of length (actions).
+
+Dirichlet noise implemented. Will investigate its behaviour tomorrow to see if we find anything interesting, or we may conclude that it's time to move MCTS to the training procedure.

@@ -126,7 +126,7 @@ class MCTS:
                 cur_whose_turn = 1 - cur_whose_turn
             return cur_state
 
-        while(num_sim <= self.total_sim_for_one_move):
+        while(num_sim < self.total_sim_for_one_move):
 
             # First Big Case: leaf node expansion (i.e. Nodes with no children)
             if cur_node.is_leaf:

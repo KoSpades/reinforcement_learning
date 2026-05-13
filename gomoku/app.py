@@ -11,7 +11,7 @@ import torch.nn.functional as F
 from flask import Flask, redirect, render_template_string, request, url_for
 
 from config import BOARD_SIZE, UI_ITER, CURRENT_MODELS_DIR, USE_MCTS_UI
-from mcts import mcts_action_selection
+from mcts import MCTS
 from model import PolicyNetwork
 from utils import check_win_cond, get_policy_state, step
 
@@ -19,6 +19,30 @@ from utils import check_win_cond, get_policy_state, step
 DEFAULT_MODEL_PATH = CURRENT_MODELS_DIR / f"final_policy_{UI_ITER}.pt"
 MCTS_UI_SIMS = 200
 MAX_UNDO_MOVES = 5
+
+
+def make_game_state(
+    board,
+    message,
+    game_over,
+    player_color,
+    next_turn,
+    last_action,
+    analysis=None,
+    mcts=None,
+    undo_stack=None,
+):
+    return {
+        "board": board,
+        "message": message,
+        "game_over": game_over,
+        "player_color": player_color,
+        "next_turn": next_turn,
+        "last_action": last_action,
+        "analysis": analysis,
+        "mcts": mcts,
+        "undo_stack": undo_stack or [],
+    }
 
 
 def get_device():
@@ -78,21 +102,26 @@ def select_policy_action(policy, state, policy_turn):
         return int(action_dist.sample().item())
 
 
-def select_ui_action(policy, state, policy_turn, last_action):
-    if check_win_cond(state, 1 - policy_turn, -1) == 2:
-        return None
-    if USE_MCTS_UI:
-        return mcts_action_selection(
-            state=state,
-            whose_turn=policy_turn,
-            last_action=last_action,
-            policy=policy,
-            total_sim=MCTS_UI_SIMS,
-        )
-    return select_policy_action(policy, state, policy_turn)
+def create_mcts(policy, state, policy_turn, last_action):
+    return MCTS(
+        state=state,
+        whose_turn=policy_turn,
+        last_action=last_action,
+        policy=policy,
+        total_sim_for_one_move=MCTS_UI_SIMS,
+    )
 
 
-def analyze_policy_state(policy, state, policy_turn, top_k=3, last_action=-1, use_mcts=False):
+def analyze_policy_state(
+    policy,
+    state,
+    policy_turn,
+    top_k=3,
+    last_action=-1,
+    use_mcts=False,
+    mcts=None,
+    mcts_policy=None,
+):
     if check_win_cond(state, 1 - policy_turn, -1) == 2:
         return [], 0.0, None
 
@@ -113,14 +142,9 @@ def analyze_policy_state(policy, state, policy_turn, top_k=3, last_action=-1, us
         selected_action = None
         mcts_stats = {}
         if use_mcts:
-            selected_action, mcts_stats = mcts_action_selection(
-                state=state,
-                whose_turn=policy_turn,
-                last_action=last_action,
-                policy=policy,
-                total_sim=MCTS_UI_SIMS,
-                return_stats=True,
-            )
+            if mcts is None:
+                mcts = create_mcts(mcts_policy or policy, state, policy_turn, last_action)
+            selected_action, mcts_stats = mcts.select_action(return_stats=True)
             sorted_actions = sorted(
                 mcts_stats,
                 key=lambda action: (mcts_stats[action]["N"], float(action_probs[action].item())),
@@ -157,6 +181,13 @@ def evaluate_outcome(state, last_player, action):
     return None
 
 
+def parse_int_form_value(name):
+    try:
+        return int(request.form[name])
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
 def make_undo_snapshot(game_state):
     return {
         "board": game_state["board"].clone(),
@@ -176,16 +207,17 @@ def push_undo_snapshot(game_state):
 
 
 def restore_undo_snapshot(snapshot, undo_stack, message):
-    return {
-        "board": snapshot["board"].clone(),
-        "message": message,
-        "game_over": snapshot["game_over"],
-        "player_color": snapshot["player_color"],
-        "next_turn": snapshot["next_turn"],
-        "last_action": snapshot["last_action"],
-        "analysis": snapshot["analysis"],
-        "undo_stack": undo_stack,
-    }
+    return make_game_state(
+        board=snapshot["board"].clone(),
+        message=message,
+        game_over=snapshot["game_over"],
+        player_color=snapshot["player_color"],
+        next_turn=snapshot["next_turn"],
+        last_action=snapshot["last_action"],
+        analysis=snapshot["analysis"],
+        mcts=None,
+        undo_stack=undo_stack,
+    )
 
 
 def can_undo_player_move(game_state):
@@ -195,20 +227,19 @@ def can_undo_player_move(game_state):
     return True
 
 
-def initialize_game_state(policy, device, player_color):
+def initialize_game_state(policy, mcts_policy, device, player_color):
     board = empty_board(device=device)
     if player_color == 0:
-        return {
-            "board": board,
-            "message": "New game. You are Black and move first.",
-            "game_over": False,
-            "player_color": 0,
-            "next_turn": 0,
-            "last_action": -1,
-            "analysis": None,
-            "undo_stack": [],
-        }
+        return make_game_state(
+            board=board,
+            message="New game. You are Black and move first.",
+            game_over=False,
+            player_color=0,
+            next_turn=0,
+            last_action=-1,
+        )
 
+    mcts = create_mcts(mcts_policy, board, policy_turn=0, last_action=-1) if USE_MCTS_UI else None
     moves, value, selected_action = analyze_policy_state(
         policy,
         board,
@@ -216,33 +247,33 @@ def initialize_game_state(policy, device, player_color):
         top_k=3,
         last_action=-1,
         use_mcts=USE_MCTS_UI,
+        mcts=mcts,
+        mcts_policy=mcts_policy,
     )
     if not moves:
-        return {
-            "board": board,
-            "message": "Draw.",
-            "game_over": True,
-            "player_color": 1,
-            "next_turn": None,
-            "last_action": -1,
-            "analysis": None,
-            "undo_stack": [],
-        }
+        return make_game_state(
+            board=board,
+            message="Draw.",
+            game_over=True,
+            player_color=1,
+            next_turn=None,
+            last_action=-1,
+        )
 
-    return {
-        "board": board,
-        "message": "New game. You are White. The policy is about to open as Black.",
-        "game_over": False,
-        "player_color": 1,
-        "next_turn": 0,
-        "last_action": -1,
-        "analysis": {
+    return make_game_state(
+        board=board,
+        message="New game. You are White. The policy is about to open as Black.",
+        game_over=False,
+        player_color=1,
+        next_turn=0,
+        last_action=-1,
+        analysis={
             "moves": moves,
             "value": value,
             "selected_action": selected_action,
         },
-        "undo_stack": [],
-    }
+        mcts=mcts,
+    )
 
 
 def create_app(model_path=DEFAULT_MODEL_PATH):
@@ -250,16 +281,18 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
     app.config["MODEL_PATH"] = Path(model_path)
     app.config["DEVICE"] = get_device()
     app.config["POLICY"] = load_policy(app.config["MODEL_PATH"], app.config["DEVICE"])
-    app.config["GAME_STATE"] = {
-        "board": empty_board(device=app.config["DEVICE"]),
-        "message": "Choose whether to play Black or White to start a new game.",
-        "game_over": True,
-        "player_color": None,
-        "next_turn": None,
-        "last_action": -1,
-        "analysis": None,
-        "undo_stack": [],
-    }
+    if USE_MCTS_UI and app.config["DEVICE"].type != "cpu":
+        app.config["MCTS_POLICY"] = load_policy(app.config["MODEL_PATH"], torch.device("cpu"))
+    else:
+        app.config["MCTS_POLICY"] = app.config["POLICY"]
+    app.config["GAME_STATE"] = make_game_state(
+        board=empty_board(device=app.config["DEVICE"]),
+        message="Choose whether to play Black or White to start a new game.",
+        game_over=True,
+        player_color=None,
+        next_turn=None,
+        last_action=-1,
+    )
 
     template = """
     <!doctype html>
@@ -737,9 +770,12 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
 
     @app.post("/new-game")
     def new_game():
-        player_color = int(request.form["player_color"])
+        player_color = parse_int_form_value("player_color")
+        if player_color not in {0, 1}:
+            return redirect(url_for("index"))
         app.config["GAME_STATE"] = initialize_game_state(
             app.config["POLICY"],
+            app.config["MCTS_POLICY"],
             app.config["DEVICE"],
             player_color,
         )
@@ -766,7 +802,11 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
         if game_state["game_over"]:
             return redirect(url_for("index"))
 
-        action = int(request.form["action"])
+        action = parse_int_form_value("action")
+        if action is None or not 0 <= action < BOARD_SIZE**2:
+            game_state["message"] = "Invalid move. Pick a board square."
+            return redirect(url_for("index"))
+
         board = game_state["board"]
         player_color = game_state["player_color"]
         policy_color = 1 - player_color
@@ -785,17 +825,23 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
 
         outcome = evaluate_outcome(board, last_player=player_color, action=action)
         if outcome is not None:
-            app.config["GAME_STATE"] = {
-                "board": board,
-                "message": outcome,
-                "game_over": True,
-                "player_color": player_color,
-                "next_turn": None,
-                "last_action": action,
-                "analysis": None,
-                "undo_stack": undo_stack,
-            }
+            app.config["GAME_STATE"] = make_game_state(
+                board=board,
+                message=outcome,
+                game_over=True,
+                player_color=player_color,
+                next_turn=None,
+                last_action=action,
+                undo_stack=undo_stack,
+            )
             return redirect(url_for("index"))
+
+        mcts = game_state.get("mcts")
+        if USE_MCTS_UI:
+            if mcts is None:
+                mcts = create_mcts(app.config["MCTS_POLICY"], board, policy_color, action)
+            else:
+                mcts.advance_root(action)
 
         analysis_moves, analysis_value, selected_action = analyze_policy_state(
             app.config["POLICY"],
@@ -804,21 +850,24 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
             top_k=3,
             last_action=action,
             use_mcts=USE_MCTS_UI,
+            mcts=mcts,
+            mcts_policy=app.config["MCTS_POLICY"],
         )
-        app.config["GAME_STATE"] = {
-            "board": board,
-            "message": "Your move is placed. The policy's top moves are shown on the board.",
-            "game_over": False,
-            "player_color": player_color,
-            "next_turn": policy_color,
-            "last_action": action,
-            "analysis": {
+        app.config["GAME_STATE"] = make_game_state(
+            board=board,
+            message="Your move is placed. The policy's top moves are shown on the board.",
+            game_over=False,
+            player_color=player_color,
+            next_turn=policy_color,
+            last_action=action,
+            analysis={
                 "moves": analysis_moves,
                 "value": analysis_value,
                 "selected_action": selected_action,
             },
-            "undo_stack": undo_stack,
-        }
+            mcts=mcts,
+            undo_stack=undo_stack,
+        )
         return redirect(url_for("index"))
 
     def play_policy_move():
@@ -834,42 +883,44 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
             return redirect(url_for("index"))
 
         analysis = game_state["analysis"]
+        mcts = game_state.get("mcts")
         policy_action = None
         if USE_MCTS_UI and analysis is not None:
             policy_action = analysis.get("selected_action")
         if policy_action is None:
-            policy_action = select_ui_action(
-                app.config["POLICY"],
-                board,
-                policy_turn=policy_color,
-                last_action=last_action,
-            )
+            if USE_MCTS_UI:
+                if mcts is None:
+                    mcts = create_mcts(app.config["MCTS_POLICY"], board, policy_color, last_action)
+                policy_action, _ = mcts.select_action()
+            else:
+                policy_action = select_policy_action(app.config["POLICY"], board, policy_color)
         if policy_action is None:
-            app.config["GAME_STATE"] = {
-                "board": board,
-                "message": "Draw.",
-                "game_over": True,
-                "player_color": player_color,
-                "next_turn": None,
-                "last_action": last_action,
-                "analysis": None,
-                "undo_stack": game_state.get("undo_stack") or [],
-            }
+            app.config["GAME_STATE"] = make_game_state(
+                board=board,
+                message="Draw.",
+                game_over=True,
+                player_color=player_color,
+                next_turn=None,
+                last_action=last_action,
+                undo_stack=game_state.get("undo_stack") or [],
+            )
             return redirect(url_for("index"))
 
         board = step(board, policy_action, whose_turn=policy_color)
         outcome = evaluate_outcome(board, last_player=policy_color, action=policy_action)
+        if USE_MCTS_UI and mcts is None and outcome is None:
+            mcts = create_mcts(app.config["MCTS_POLICY"], board, player_color, policy_action)
         message = outcome or f"Policy played at row {policy_action // BOARD_SIZE}, col {policy_action % BOARD_SIZE}."
-        app.config["GAME_STATE"] = {
-            "board": board,
-            "message": message,
-            "game_over": outcome is not None,
-            "player_color": player_color,
-            "next_turn": None if outcome is not None else player_color,
-            "last_action": policy_action,
-            "analysis": None,
-            "undo_stack": game_state.get("undo_stack") or [],
-        }
+        app.config["GAME_STATE"] = make_game_state(
+            board=board,
+            message=message,
+            game_over=outcome is not None,
+            player_color=player_color,
+            next_turn=None if outcome is not None else player_color,
+            last_action=policy_action,
+            mcts=None if outcome is not None else mcts,
+            undo_stack=game_state.get("undo_stack") or [],
+        )
         return redirect(url_for("index"))
 
     @app.get("/")
