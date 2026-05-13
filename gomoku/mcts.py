@@ -73,7 +73,10 @@ class MCTS:
                  last_action,
                  policy: PolicyNetwork, 
                  exploration_coef=1, 
-                 total_sim_for_one_move=20):
+                 total_sim_for_one_move=20,
+                 dirichlet_enabled=True,
+                 dirichlet_alpha=0.2,
+                 dirichlet_eps=0.25):
         self.root = Root(whose_turn=whose_turn, 
                          P=0, 
                          N=0, 
@@ -86,6 +89,25 @@ class MCTS:
         self.device = next(self.policy.parameters()).device
         self.exploration_coef = exploration_coef
         self.total_sim_for_one_move=total_sim_for_one_move
+        self.dirichlet_enabled = dirichlet_enabled
+        self.dirichlet_alpha = dirichlet_alpha
+        self.dirichlet_eps = dirichlet_eps
+
+    def add_dirichlet_noise(self):
+        """
+        Adding Dirichlet noise to root node once. 
+        It should be applied to the Root node, if the Root node has children, and dirichlet_enabled is True.
+        """
+        if not self.dirichlet_enabled or not self.root.children:
+            return
+        
+        actions = list(self.root.children.keys())
+        noise = torch.distributions.Dirichlet(
+          torch.full((len(actions),), self.dirichlet_alpha, device=self.device)
+        ).sample()
+        for action, eta in zip(actions, noise):
+            child = self.root.children[action]
+            child.P = (1 - self.dirichlet_eps) * child.P + self.dirichlet_eps * eta.item()
 
     def select_action(self, return_stats=False):
         num_sim = 0
@@ -170,6 +192,8 @@ class MCTS:
                                           action=action,
                                           children={})
                         cur_node.children[action] = child_node
+                    if cur_node.parent is None:
+                        self.add_dirichlet_noise()
                     # back propagate the value from NN from current node upwards
                     cur_node.value_propagate(cur_value.item())
                     num_sim += 1
@@ -215,6 +239,8 @@ class MCTS:
         for _, child in self.root.children.items():
             child.parent = self.root
 
+        self.add_dirichlet_noise()
+
         return best_action, root_info
     
     def advance_root(self, action):
@@ -237,6 +263,7 @@ class MCTS:
         
             for _, child in self.root.children.items():
                 child.parent = self.root
+            self.add_dirichlet_noise()
         else:
             self.root = Root(whose_turn=1-self.root.whose_turn, 
                              P=0, 

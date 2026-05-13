@@ -630,6 +630,8 @@ After studying these issues a bit closer, looking like we need to implement two 
 - First, search tree reuse: this is a must. We should look to implement a MCTS() class it looks like.
 - Dirichlet noise at Root node to force some explorations. This is what AlphaGo does, and it seems like a good idea to get around the extreme high prior (>0.99), so let's try that too.
 
+Another investigation shows that MCTS requires a different kind of reward function than actor-critic (although just use it for action selection during training should already make the agent better). This is something to keep in mind.
+
 ### Moving MCTS to a class
 - It will store many of the attributes that we are currently using in mcts_action_selection().
 - It will also have a root attribute, so that we can reuse subtress within an episode.
@@ -637,3 +639,17 @@ After studying these issues a bit closer, looking like we need to implement two 
 Encountered a bug in implementation: we need to enable an "advance root" functionality in MCTS class, so that on the UI side it has the right info. Without this functionality, after a human player makes a move, MCTS would have the wrong Root to pick an action for (i.e. missing the human move completely).
 
 Finished MCTS class refactoring and subtree reuse. Will add the Dirichlet noise tomorrow.
+
+## 05/12/26
+
+### How Dirichlet noise works:
+- It's a way to encourage exploration at the root node level, by adding a noise distribution over the Root's children. 
+
+$$P_{noise}(s, a) = (1 - \epsilon)P_{NN}(s, a) + \epsilon\eta_a$$
+
+- Only applied at the Root level.
+- Controlled by two parameters: $\alpha$, which determines how peaky the noise is (i.e., do we want to put most of the random weights into a few moves), and $\epsilon$, which determines how much we want to use the NN and how much we want to use the noise.
+- We can start with $\epsilon=0.25$, and $\alpha=0.2$.
+
+Sampling from the Dirichlet noise in torch: noise = torch.distributions.Dirichlet(torch.full((len(actions),), self.dirichlet_alpha, device=self.device)).sample()
+- This returns a 1D tensor of length (actions).
