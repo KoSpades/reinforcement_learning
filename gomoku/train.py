@@ -9,6 +9,7 @@ from pathlib import Path
 from utils import check_win_cond, get_random_legal_move, step
 from model import PolicyNetwork
 from opponent import *
+from mcts import MCTS
 from config import (BOARD_SIZE, 
                     TRAIN_ITER, 
                     TRAINING_ALGO, 
@@ -44,7 +45,7 @@ def generate_episode_for_reinforce(start_state, self_play, our_player, opponent,
         # This happens under two scenarios: it's our own turn (rather than a fixed opponent), or if we are doing self-play
         if our_turn or self_play:
             active_player = our_player if our_turn else opponent
-            cur_action, cur_action_log_prob, cur_entropy, cur_value = active_player.select_action(cur_state, cur_turn, sample=True)
+            cur_action, cur_action_log_prob, cur_entropy, cur_value, _ = active_player.select_action(cur_state, cur_turn, sample=True)
             if cur_action == -1:
                 # In this case, we got a draw, and there's nothing to train, so we just ignore this episode.
                 episode_history = []
@@ -349,6 +350,109 @@ def rl_training_loop(start_state,
         "critic": critic_loss_by_iter,
         "entropy": entropy_loss_by_iter,
         "bookkeeping": debug_bookkeeping,
+    }
+
+
+def generate_episode_for_mcts(start_state, 
+                              self_play, 
+                              our_player, 
+                              opponent, 
+                              random_start=True,
+                              total_sim_for_one_move=100):
+    """
+    Return a complete episode of (state, action) pairs using MCTS. 
+    Starting from start_state, following the input player objects.
+
+    """
+    episode_history = []
+    black_action_distr = []
+    white_action_distr = []
+    black_predicted = []
+    white_predicted = []
+    # cur_turn: 0 for black, 1 for white.
+    cur_turn = 0
+    if random_start:
+        total_random_moves = random.randint(2,  2)
+        for _ in range(total_random_moves):
+            cur_action = get_random_legal_move(start_state)
+            start_state = step(start_state, cur_action, cur_turn)
+            cur_turn = 1 - cur_turn
+    cur_state = start_state
+    our_color = random.randint(0, 1)
+    our_turn = (cur_turn == our_color)
+
+    # Create MCTS class for this episode
+    mcts = MCTS(state=cur_state,
+                whose_turn=cur_turn,
+                last_action=cur_action,
+                policy=our_player.policy,
+                dirichlet_enabled=True,
+                total_sim_for_one_move=total_sim_for_one_move)
+
+    while (True):
+        # Case 1: it's our own turn (rather than a fixed opponent), or if we are doing self-play
+        # Call MCTS to generate an action
+        # Call NN to generate an action distribution and a value
+        if our_turn or self_play:
+            cur_action, mcts_action_distr, _ = mcts.select_action()
+            active_player = our_player if our_turn else opponent
+            _, _, _, cur_value, nn_action_distr = active_player.select_action(cur_state, cur_turn, sample=True)
+            # TODO: continue from here
+            if cur_action == -1:
+                # In this case, we got a draw, and there's nothing to train, so we just ignore this episode.
+                episode_history = []
+                black_action_distr = []
+                white_action_distr = []
+                black_predicted = []
+                white_predicted = []
+                break
+            episode_history.append((cur_state, cur_action))
+            if cur_turn == 0:
+                black_action_distr.append(cur_action_log_prob)
+                black_predicted.append(cur_value)
+            else:
+                white_log_probs.append(cur_action_log_prob)
+                white_predicted.append(cur_value)
+            trainable_entropies.append(cur_entropy)
+        # In this case: the "action" is just for rolling out the environment, not used for updating model weights.
+        else:
+            cur_action = opponent.select_action(cur_state, cur_turn)
+            if cur_action == -1:
+                episode_history = []
+                black_log_probs = []
+                white_log_probs = []
+                trainable_entropies = []
+                black_predicted = []
+                white_predicted = []
+                break
+        next_state = step(cur_state, cur_action, cur_turn)
+        # Checking for termination
+        res = check_win_cond(next_state, cur_turn, cur_action)
+        # First case: not terminated yet
+        if res < 0:
+            cur_state = next_state
+            cur_turn = 1 - cur_turn
+            our_turn = not our_turn
+        elif res == 2:
+            episode_history = []
+            black_log_probs = []
+            white_log_probs = []
+            trainable_entropies = []
+            black_predicted = []
+            white_predicted = []
+            break
+        # Second case: reached win termination
+        else:
+            episode_history.append((next_state, res))
+            break
+    return {
+        "episode_history": episode_history,
+        "black_log_probs": black_log_probs,
+        "white_log_probs": white_log_probs,
+        "trainable_entropies": trainable_entropies,
+        "black_predicted": black_predicted,
+        "white_predicted": white_predicted,
+        "our_color": our_color,
     }
 
 

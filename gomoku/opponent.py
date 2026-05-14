@@ -18,7 +18,9 @@ class OurPlayer(Player):
     To ways to initialize this: either from a file, or from a policy directly
     """
 
-    def __init__(self, model_path=None, policy=None):
+    def __init__(self, 
+                 model_path=None, 
+                 policy=None):
         if policy is not None:
             self.policy = policy
             self.device = next(self.policy.parameters()).device
@@ -32,6 +34,7 @@ class OurPlayer(Player):
                 self.policy.load_state_dict(state_dict)
             self.policy.eval()
 
+
     def select_action(self, state, whose_turn, sample=False):
         """
         whose_turn: 0 if I am black, 1 if I am white.
@@ -39,7 +42,7 @@ class OurPlayer(Player):
         # First check if we are in a drawing board already
         if check_win_cond(state, 1 - whose_turn, -1) == 2:
             if sample:
-                return -1, None, None, None
+                return -1, None, None, None, None
             return -1
 
         policy_state = get_policy_state(state, whose_turn)
@@ -52,10 +55,11 @@ class OurPlayer(Player):
             legal_mask = (occupied_spaces == 0).flatten().to(self.device)
             masked_logits = action_logits.masked_fill(~legal_mask, float("-inf"))
             action_dist = torch.distributions.Categorical(logits=masked_logits)
+            action_probs = action_dist.probs
             cur_action = action_dist.sample()
             cur_action_log_prob = action_dist.log_prob(cur_action)
             cur_entropy = action_dist.entropy()
-            return int(cur_action.item()), cur_action_log_prob, cur_entropy, cur_value
+            return int(cur_action.item()), cur_action_log_prob, cur_entropy, cur_value, action_probs
         # We deterministically pick an action (used in evaluation)
         else:
             with torch.no_grad():

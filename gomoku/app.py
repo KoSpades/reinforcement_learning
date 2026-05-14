@@ -144,7 +144,7 @@ def analyze_policy_state(
         if use_mcts:
             if mcts is None:
                 mcts = create_mcts(mcts_policy or policy, state, policy_turn, last_action)
-            selected_action, mcts_stats = mcts.select_action(return_stats=True)
+            selected_action, _, mcts_stats = mcts.select_action(return_stats=True)
             sorted_actions = sorted(
                 mcts_stats,
                 key=lambda action: (mcts_stats[action]["N"], float(action_probs[action].item())),
@@ -891,7 +891,7 @@ def create_app(model_path=DEFAULT_MODEL_PATH):
             if USE_MCTS_UI:
                 if mcts is None:
                     mcts = create_mcts(app.config["MCTS_POLICY"], board, policy_color, last_action)
-                policy_action, _ = mcts.select_action()
+                policy_action, _, _ = mcts.select_action()
             else:
                 policy_action = select_policy_action(app.config["POLICY"], board, policy_color)
         if policy_action is None:

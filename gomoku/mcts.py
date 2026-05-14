@@ -110,6 +110,11 @@ class MCTS:
             child.P = (1 - self.dirichlet_eps) * child.P + self.dirichlet_eps * eta.item()
 
     def select_action(self, return_stats=False):
+
+        # First check if we are in a drawing board already
+        if check_win_cond(self.root.state, 1 - self.root.whose_turn, -1) == 2:
+            return -1, {}, None
+
         num_sim = 0
         cur_node = self.root
 
@@ -210,6 +215,10 @@ class MCTS:
         # Finally, choose the action corresponding to Root's children with the highest count N
         best_action = max(self.root.children,
                           key=lambda action: self.root.children[action].N)
+        total_child_visits = sum(child.N for child in self.root.children.values())
+        root_count_distribution = torch.zeros(BOARD_SIZE**2, device=self.device)
+        for action, child in self.root.children.items():
+            root_count_distribution[action] = child.N / total_child_visits
         
         if return_stats:
             root_info = {
@@ -241,7 +250,7 @@ class MCTS:
 
         self.add_dirichlet_noise()
 
-        return best_action, root_info
+        return best_action, root_count_distribution, root_info
     
     def advance_root(self, action):
         '''

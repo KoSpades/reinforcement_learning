@@ -655,3 +655,34 @@ Sampling from the Dirichlet noise in torch: noise = torch.distributions.Dirichle
 - This returns a 1D tensor of length (actions).
 
 Dirichlet noise implemented. Will investigate its behaviour tomorrow to see if we find anything interesting, or we may conclude that it's time to move MCTS to the training procedure.
+
+## 05/13/26
+
+Let's first evaluate MCTS's performance inside of evaluation.py. We are not yet doing a full migration to the MCTS architecture in the training loop, so we will just add a flag in evaluation.py.
+
+Unsurprisingly, with MCTS, our agent beat the one without (0.97). We also did a few more UI playing, and the benefit of MCTS is clear, again, unsurprisingly. It is able to discover correct moves that NN gives near zero probability.
+
+We did discover something interesting with the MCTS part though.
+
+### Late discovery during MCTS search
+- Sometimes, a good move with a very low prior is discovered too late, and its N fail to catch up (even if it's a terminal winning move). Even if during simulations, its Q may be much higher than other actions explored.
+- People have ways to address this problem, for now, we shouldn't worry too much.
+
+So I think it's time for us to go head and implement the full MCTS training loop. Looks like the only major change is updating the correct loss function. Let's understand how that works.
+
+## Full Migration to MCTS Training architecture
+
+1. Loss function: 
+
+$$L = (z - v)^2 - \pi^\top \log(\mathbf{p}) + c||\theta||^2$$
+
+- $(z-v)^2$: This is the value loss that we are already using.
+- $\pi^\top \log(\mathbf{p})$: where $\pi$ is the MCTS generated distribution, and $\mathbf{p}$ is the NN output distribution. This term is the cross entropy term that makes our NN priors to align with the MCTS distributions (in a sense, supervised training).
+- $c||\theta||^2$: L2 regularization that prevents overfitting (i.e., neurons with huge weights, which likely correspond to memorizing some specific board positions)
+
+2. Implementationally, how are we computing the $\pi^\top \log(\mathbf{p})$ term?
+- We can just average over all the moves in an episode, similar to how we deal with the value loss.
+
+Let's still keep the original functions in train. We will write new ones: some code repetition will be tolerated :)
+
+In progress: will finish tomorrow.
