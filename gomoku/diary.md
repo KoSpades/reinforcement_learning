@@ -688,3 +688,19 @@ Let's still keep the original functions in train. We will write new ones: some c
 In progress: will finish tomorrow.
 
 ## 05/14/26
+
+MCTS done :) Time to see how long training takes.
+
+We are doing 100 sims, and it's about 1s per iter.
+
+Another important thing to add seems like the replay buffer, maybe we should learn about what it is, and if profitable, implement it.
+
+Saved a 5k iterations version to frozen, called four.
+
+And here are some truly encouraging results: at 5K iter, our MCTS agent is able to beat the two heuristic (1000AC and 1000RE) at 0.99, and it already beat the previous 10K AC at 0.8. So we are doing much much better. So we have achieved all we wanted to do before the project starts, and we can have a satisfying wrap :)
+
+And, for the first time ever, I lost :) At just 6K iterations of MCTS. This is a true milestone.
+
+Tomorrow we wil do a thorough understanding of the "Why". Why is MCTS doing so much better, at so few iterations. This should give us valuable insights going forward.
+
+7

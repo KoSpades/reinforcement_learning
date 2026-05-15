@@ -1,6 +1,6 @@
 from utils import get_random_legal_move, step, check_win_cond
 from opponent import RandomOpponent, FirstOpponent, OurPlayer
-from config import BOARD_SIZE, REINFORCE_MODELS_DIR, ACTOR_CRITIC_MODELS_DIR
+from config import BOARD_SIZE, REINFORCE_MODELS_DIR, ACTOR_CRITIC_MODELS_DIR, MCTS_MODELS_DIR
 from mcts import MCTS
 
 import random
@@ -79,7 +79,7 @@ def calc_win_rate(our_player: OurPlayer,
 if __name__ == "__main__":
     print("-----------Evaluation starting-------------")
 
-    our_player = OurPlayer(ACTOR_CRITIC_MODELS_DIR / "final_policy_10000.pt")
+    our_player = OurPlayer(MCTS_MODELS_DIR / "final_policy_1000.pt")
 
     # our_opponent = RandomOpponent()
     # num_wins, num_draws, num_games = calc_win_rate(our_player, our_opponent, use_mcts=True)
@@ -87,20 +87,20 @@ if __name__ == "__main__":
 
     # our_opponent = OurPlayer(ACTOR_CRITIC_MODELS_DIR / "final_policy_1000.pt")
     # num_wins, num_draws, num_games = calc_win_rate(our_player, our_opponent, use_mcts=True)
-    # print(f"Win rate against 1000 iter: {num_wins / num_games}")
+    # print(f"Win rate against 1000 Actor-Critic: {num_wins / num_games}")
 
     our_opponent = FirstOpponent(ACTOR_CRITIC_MODELS_DIR / "final_policy_1000.pt")
     num_wins, num_draws, num_games = calc_win_rate(our_player, our_opponent, use_mcts=True, dirichlet_enabled=False)
-    print(f"Win rate against strong heuristic: {num_wins / num_games}")
+    print(f"Win rate against Actor-Critic heuristic: {num_wins / num_games}")
 
     # our_opponent = OurPlayer(REINFORCE_MODELS_DIR / "final_policy_1000.pt")
     # num_wins, num_draws, num_games = calc_win_rate(our_player, our_opponent, use_mcts=True)
-    # print(f"Win rate against 1000 iter: {num_wins / num_games}")
+    # print(f"Win rate against 1000 REINFORCE: {num_wins / num_games}")
 
     our_opponent = FirstOpponent(REINFORCE_MODELS_DIR / "final_policy_1000.pt")
     num_wins, num_draws, num_games = calc_win_rate(our_player, our_opponent, use_mcts=True, dirichlet_enabled=False)
-    print(f"Win rate against strong heuristic: {num_wins / num_games}")
+    print(f"Win rate against REINFORCE heuristic: {num_wins / num_games}")
 
-    # our_opponent = OurPlayer(ACTOR_CRITIC_MODELS_DIR / "final_policy_10000.pt")
-    # num_wins, num_draws, num_games = calc_win_rate(our_player, our_opponent, use_mcts=True, dirichlet_enabled=False)
-    # print(f"Win rate against 10000 iter: {num_wins / num_games}")
+    our_opponent = OurPlayer(ACTOR_CRITIC_MODELS_DIR / "final_policy_10000.pt")
+    num_wins, num_draws, num_games = calc_win_rate(our_player, our_opponent, use_mcts=True, dirichlet_enabled=False)
+    print(f"Win rate against 10000 AC: {num_wins / num_games}")

@@ -15,7 +15,8 @@ from config import (BOARD_SIZE,
                     TRAINING_ALGO, 
                     PLOTS_DIR, 
                     MODEL_DIRS_BY_ALGO, 
-                    ACTOR_CRITIC_MODELS_DIR)
+                    ACTOR_CRITIC_MODELS_DIR,
+                    MCTS_MODELS_DIR)
     
 
 def generate_episode_for_reinforce(start_state, self_play, our_player, opponent, random_start=True):
@@ -450,7 +451,7 @@ def generate_episode_for_mcts(start_state,
         "our_color": our_color,
     }
 
-def compute_mcts_loss(episode_data, value_coef, device):
+def compute_mcts_losses(episode_data, value_coef, device):
     """
     episode_data: information returned by generate_episode_for_mcts
     value_coef: scaling factor for the value loss. For MCTS we should default this to 1, unless we observe problems.
@@ -507,6 +508,189 @@ def compute_mcts_loss(episode_data, value_coef, device):
 
     return policy_loss, value_loss
 
+
+def mcts_training_loop(start_state, 
+                       player_path=None,
+                       num_iter=1000, 
+                       learning_rate=3e-4,
+                       value_coef=1):
+    """
+    MCTS self-play training loop.
+    """
+    cur_policy = PolicyNetwork().to(start_state.device)
+    optimizer = torch.optim.AdamW(cur_policy.parameters(), lr=learning_rate, weight_decay=1e-4)
+    cur_iter = 0
+    if player_path is not None:
+        check_point = torch.load(player_path, map_location=start_state.device)
+        cur_policy.load_state_dict(check_point["model"])
+        optimizer.load_state_dict(check_point["optimizer"])
+    our_player = OurPlayer(policy=cur_policy)
+    opponent = OurPlayer(policy=cur_policy)
+    policy_loss_by_iter = []
+    value_loss_by_iter = []
+    debug_bookkeeping = {
+        "black_value_mean": [],
+        "white_value_mean": [],
+        "black_value_loss": [],
+        "white_value_loss": [],
+        "black_predicted_values": [],
+        "white_predicted_values": [],
+    }
+    while (cur_iter < num_iter):
+        if (cur_iter % 20 == 0):
+            print(f"Current iter: {cur_iter}")
+        # generate a complete episode
+        episode_data = generate_episode_for_mcts(start_state, our_player, opponent)
+        cur_episode = episode_data["episode_history"]
+
+        # perform updates
+        if len(cur_episode):
+            policy_loss, value_loss = compute_mcts_losses(
+                episode_data=episode_data,
+                value_coef=value_coef,
+                device=start_state.device,
+            )
+
+            total_loss = policy_loss + value_loss
+            optimizer.zero_grad()
+            total_loss.backward()
+            # Apply gradient clipping
+            torch.nn.utils.clip_grad_norm_(cur_policy.parameters(), max_norm=1)
+            optimizer.step()
+
+            policy_loss_by_iter.append(policy_loss.detach())
+            value_loss_by_iter.append(value_loss.detach())
+            bookkeeping = build_mcts_loss_bookkeeping(
+                episode_data=episode_data,
+                value_coef=value_coef,
+                device=start_state.device,
+            )
+            for key, value in bookkeeping.items():
+                if key in {"black_predicted_values", "white_predicted_values"}:
+                    debug_bookkeeping[key].extend(value)
+                else:
+                    debug_bookkeeping[key].append(value)
+            cur_iter += 1
+
+    # Saving the model and optimizer for later, cotinuous training if needed
+    model_dir = MODEL_DIRS_BY_ALGO["mcts"]
+    model_dir.mkdir(parents=True, exist_ok=True)
+
+    if player_path is None:
+        torch.save({
+            "model": cur_policy.state_dict(),
+            "optimizer": optimizer.state_dict()
+        }, model_dir / f"final_policy_{TRAIN_ITER}.pt")
+        print(f"Training completed, saved to new path {model_dir / f'final_policy_{TRAIN_ITER}.pt'}")
+    else:
+        torch.save({
+            "model": cur_policy.state_dict(),
+            "optimizer": optimizer.state_dict()
+        }, player_path)
+        print(f"Training completed, saved to existing path {player_path}")
+
+    return cur_policy, {
+        "policy": policy_loss_by_iter,
+        "value": value_loss_by_iter,
+        "bookkeeping": debug_bookkeeping,
+    }
+
+
+def build_mcts_loss_bookkeeping(episode_data, value_coef, device):
+    winner = episode_data["episode_history"][-1][1]
+    black_predicted = episode_data["black_predicted"]
+    white_predicted = episode_data["white_predicted"]
+
+    if winner == 2:
+        policy_reward_black = 0
+        policy_reward_white = 0
+    else:
+        policy_reward_black = 1 if winner == 0 else -1
+        policy_reward_white = -policy_reward_black
+
+    if len(black_predicted):
+        black_predicted_tensor = torch.stack(black_predicted)
+        black_value_mean = black_predicted_tensor.mean().detach()
+        black_value_loss = (
+            value_coef * ((black_predicted_tensor - policy_reward_black) ** 2).mean()
+        ).detach()
+        black_predicted_values = black_predicted_tensor.detach().cpu().tolist()
+    else:
+        black_value_mean = torch.tensor(0.0, device=device)
+        black_value_loss = torch.tensor(0.0, device=device)
+        black_predicted_values = []
+
+    if len(white_predicted):
+        white_predicted_tensor = torch.stack(white_predicted)
+        white_value_mean = white_predicted_tensor.mean().detach()
+        white_value_loss = (
+            value_coef * ((white_predicted_tensor - policy_reward_white) ** 2).mean()
+        ).detach()
+        white_predicted_values = white_predicted_tensor.detach().cpu().tolist()
+    else:
+        white_value_mean = torch.tensor(0.0, device=device)
+        white_value_loss = torch.tensor(0.0, device=device)
+        white_predicted_values = []
+
+    return {
+        "black_value_mean": black_value_mean,
+        "white_value_mean": white_value_mean,
+        "black_value_loss": black_value_loss,
+        "white_value_loss": white_value_loss,
+        "black_predicted_values": black_predicted_values,
+        "white_predicted_values": white_predicted_values,
+    }
+
+
+def plot_mcts_loss_by_iter(loss_by_type):
+    policy_loss = [loss.item() if torch.is_tensor(loss) else loss for loss in loss_by_type["policy"]]
+    value_loss = [loss.item() if torch.is_tensor(loss) else loss for loss in loss_by_type["value"]]
+
+    plt.figure()
+    plt.plot(range(len(policy_loss)), policy_loss, label="Policy Loss")
+    plt.plot(range(len(value_loss)), value_loss, label="Value Loss")
+    plt.xlabel("Iteration")
+    plt.ylabel("Loss")
+    plt.title("MCTS Training Loss")
+    plt.legend()
+    PLOTS_DIR.mkdir(parents=True, exist_ok=True)
+    plt.savefig(PLOTS_DIR / f"mcts_loss_curve_{TRAIN_ITER}.png", dpi=200, bbox_inches="tight")
+
+
+def inspect_mcts_bookkeeping(loss_by_type):
+    bookkeeping = loss_by_type["bookkeeping"]
+
+    black_predicted_values = bookkeeping["black_predicted_values"]
+    white_predicted_values = bookkeeping["white_predicted_values"]
+
+    def _print_percentiles(label, values):
+        if not values:
+            print(f"{label}: no samples")
+            return
+        values_tensor = torch.tensor(values, dtype=torch.float32)
+        q10, q50, q90 = torch.quantile(values_tensor, torch.tensor([0.1, 0.5, 0.9]))
+        print(
+            f"{label}: p10={q10.item():.4f}, median={q50.item():.4f}, p90={q90.item():.4f}"
+        )
+
+    def _print_last(label, values):
+        if not values:
+            print(f"{label}: no samples")
+            return
+        last_value = values[-1]
+        if torch.is_tensor(last_value):
+            last_value = last_value.item()
+        print(f"{label}: last={last_value:.4f}")
+
+    print("------ MCTS Predicted Value Percentiles ------")
+    _print_percentiles("black_predicted", black_predicted_values)
+    _print_percentiles("white_predicted", white_predicted_values)
+    print("------ MCTS Latest Value Bookkeeping ------")
+    _print_last("black_value_mean", bookkeeping["black_value_mean"])
+    _print_last("white_value_mean", bookkeeping["white_value_mean"])
+    _print_last("black_value_loss", bookkeeping["black_value_loss"])
+    _print_last("white_value_loss", bookkeeping["white_value_loss"])
+
 def plot_loss_by_iter(loss_by_type):
     actor_loss = [loss.item() if torch.is_tensor(loss) else loss for loss in loss_by_type["actor"]]
     critic_loss = [loss.item() if torch.is_tensor(loss) else loss for loss in loss_by_type["critic"]]
@@ -550,20 +734,32 @@ if __name__ == "__main__":
     start_time = time.time()
     # device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
     device = "cpu"
+    train_MCTS = True
     cur_state = torch.zeros((2, BOARD_SIZE, BOARD_SIZE), device=device)
-    my_opponent = FirstOpponent(ACTOR_CRITIC_MODELS_DIR / "final_policy_1000.pt")
-    # final_policy, loss_by_type = rl_training_loop(cur_state, 
-    #                                            self_play=False, 
-    #                                            training_algo=TRAINING_ALGO,
-    #                                            player_path=MODEL_DIRS_BY_ALGO[TRAINING_ALGO] / "final_policy_10000.pt", 
-    #                                            opponent=my_opponent,
-    #                                            num_iter=TRAIN_ITER)
-    final_policy, loss_by_type = rl_training_loop(cur_state, 
-                                                  self_play=True, 
-                                                  training_algo=TRAINING_ALGO,
-                                                  player_path=ACTOR_CRITIC_MODELS_DIR / "final_policy_10000.pt",
-                                                  num_iter=TRAIN_ITER)
+    if train_MCTS:
+        final_policy, loss_by_type = mcts_training_loop(
+            cur_state,
+            player_path=MCTS_MODELS_DIR / "final_policy_1000.pt",
+            num_iter=TRAIN_ITER,
+        )
+    else:
+        my_opponent = FirstOpponent(ACTOR_CRITIC_MODELS_DIR / "final_policy_1000.pt")
+        # final_policy, loss_by_type = rl_training_loop(cur_state, 
+        #                                            self_play=False, 
+        #                                            training_algo=TRAINING_ALGO,
+        #                                            player_path=MODEL_DIRS_BY_ALGO[TRAINING_ALGO] / "final_policy_10000.pt", 
+        #                                            opponent=my_opponent,
+        #                                            num_iter=TRAIN_ITER)
+        final_policy, loss_by_type = rl_training_loop(cur_state, 
+                                                      self_play=True, 
+                                                      training_algo=TRAINING_ALGO,
+                                                      player_path=ACTOR_CRITIC_MODELS_DIR / "final_policy_10000.pt",
+                                                      num_iter=TRAIN_ITER)
     print(f"Total training time is {time.time() - start_time}")
 
-    plot_loss_by_iter(loss_by_type=loss_by_type)
-    inspect_critic_bookkeeping(loss_by_type=loss_by_type)
+    if train_MCTS:
+        plot_mcts_loss_by_iter(loss_by_type=loss_by_type)
+        inspect_mcts_bookkeeping(loss_by_type=loss_by_type)
+    else:
+        plot_loss_by_iter(loss_by_type=loss_by_type)
+        inspect_critic_bookkeeping(loss_by_type=loss_by_type)
