@@ -695,12 +695,17 @@ We are doing 100 sims, and it's about 1s per iter.
 
 Another important thing to add seems like the replay buffer, maybe we should learn about what it is, and if profitable, implement it.
 
-Saved a 5k iterations version to frozen, called four.
+And here are some truly encouraging results: at 5K iter, our MCTS agent is able to beat the two heuristic (1000AC and 1000RE) at 0.99, and it already beat the previous 10K AC at 0.8. So we are doing much much better. So we have achieved all we wanted to do before the project starts, and we can have a satisfying wrap :) And at 8K iter, it could beat 10K AV at 0.98, and that 10K AC was the strongest agent previously. 
 
-And here are some truly encouraging results: at 5K iter, our MCTS agent is able to beat the two heuristic (1000AC and 1000RE) at 0.99, and it already beat the previous 10K AC at 0.8. So we are doing much much better. So we have achieved all we wanted to do before the project starts, and we can have a satisfying wrap :)
+Running debug.py also shows that the NN still has a lot of live neurons.
+Inspecting the loss plot shows that the loss are on the same scale, so not much scaling needed.
 
-And, for the first time ever, I lost :) At just 6K iterations of MCTS. This is a true milestone.
+And, for the first time ever, I lost :) At just 6K iterations of MCTS. This is a true milestone. Maybe eventually we will even conquer 13*13, which, really seems like a matter of throwing more compute at it.
 
 Tomorrow we wil do a thorough understanding of the "Why". Why is MCTS doing so much better, at so few iterations. This should give us valuable insights going forward.
 
-7
+Saved a 10k iterations version to frozen, called four.
+
+We will probs do more training: now lowering lr to 1e-4, and random moves from fixed 2 moves to 0 to 3. 
+
+Let's also spent sometime to understand the loss values from debugging output, I am not really getting it right now.

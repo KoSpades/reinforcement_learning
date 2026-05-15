@@ -109,6 +109,7 @@ def create_mcts(policy, state, policy_turn, last_action):
         last_action=last_action,
         policy=policy,
         total_sim_for_one_move=MCTS_UI_SIMS,
+        dirichlet_enabled=False,
     )
 
 

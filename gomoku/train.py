@@ -374,11 +374,13 @@ def generate_episode_for_mcts(start_state,
     # cur_turn: 0 for black, 1 for white.
     cur_turn = 0
     if random_start:
-        total_random_moves = random.randint(2,  2)
+        total_random_moves = random.randint(0, 3)
         for _ in range(total_random_moves):
             cur_action = get_random_legal_move(start_state)
             start_state = step(start_state, cur_action, cur_turn)
             cur_turn = 1 - cur_turn
+        if total_random_moves == 0:
+            cur_action = -1
     else:
         cur_action = -1
     cur_state = start_state
@@ -512,7 +514,7 @@ def compute_mcts_losses(episode_data, value_coef, device):
 def mcts_training_loop(start_state, 
                        player_path=None,
                        num_iter=1000, 
-                       learning_rate=3e-4,
+                       learning_rate=1e-4,
                        value_coef=1):
     """
     MCTS self-play training loop.
@@ -673,23 +675,22 @@ def inspect_mcts_bookkeeping(loss_by_type):
             f"{label}: p10={q10.item():.4f}, median={q50.item():.4f}, p90={q90.item():.4f}"
         )
 
-    def _print_last(label, values):
+    def _print_average(label, values):
         if not values:
             print(f"{label}: no samples")
             return
-        last_value = values[-1]
-        if torch.is_tensor(last_value):
-            last_value = last_value.item()
-        print(f"{label}: last={last_value:.4f}")
+        values_tensor = torch.tensor(
+            [value.item() if torch.is_tensor(value) else value for value in values],
+            dtype=torch.float32,
+        )
+        print(f"{label}: average={values_tensor.mean().item():.4f}")
 
     print("------ MCTS Predicted Value Percentiles ------")
     _print_percentiles("black_predicted", black_predicted_values)
     _print_percentiles("white_predicted", white_predicted_values)
-    print("------ MCTS Latest Value Bookkeeping ------")
-    _print_last("black_value_mean", bookkeeping["black_value_mean"])
-    _print_last("white_value_mean", bookkeeping["white_value_mean"])
-    _print_last("black_value_loss", bookkeeping["black_value_loss"])
-    _print_last("white_value_loss", bookkeeping["white_value_loss"])
+    print("------ MCTS Average Training Loss ------")
+    _print_average("policy_loss", loss_by_type["policy"])
+    _print_average("value_loss", loss_by_type["value"])
 
 def plot_loss_by_iter(loss_by_type):
     actor_loss = [loss.item() if torch.is_tensor(loss) else loss for loss in loss_by_type["actor"]]

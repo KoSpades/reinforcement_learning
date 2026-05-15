@@ -2,7 +2,7 @@
 
 import torch
 
-from config import BOARD_SIZE, ACTOR_CRITIC_MODELS_DIR
+from config import BOARD_SIZE, ACTOR_CRITIC_MODELS_DIR, MCTS_MODELS_DIR
 from model import PolicyNetwork
 from utils import step
 
@@ -146,7 +146,7 @@ def inspect_policy_move_diversity(policy):
 
 
 def main():
-    model_path = ACTOR_CRITIC_MODELS_DIR / "final_policy_1000.pt"
+    model_path = MCTS_MODELS_DIR / "final_policy_1000.pt"
     policy = load_policy(model_path)
     inspect_value_head_linear(policy)
     inspect_value_outputs_across_boards(policy)
