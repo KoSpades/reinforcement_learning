@@ -450,87 +450,62 @@ def generate_episode_for_mcts(start_state,
         "our_color": our_color,
     }
 
-
-# TODO: update this function below for mcts
-def compute_mcts_loss(episode_data, self_play, training_algo, value_coef, regular_beta, device):
+def compute_mcts_loss(episode_data, value_coef, device):
+    """
+    episode_data: information returned by generate_episode_for_mcts
+    value_coef: scaling factor for the value loss. For MCTS we should default this to 1, unless we observe problems.
+    """
     winner = episode_data["episode_history"][-1][1]
-    black_log_probs = episode_data["black_log_probs"]
-    white_log_probs = episode_data["white_log_probs"]
+    black_mcts_distr = episode_data["black_mcts_distr"]
+    white_mcts_distr = episode_data["white_mcts_distr"]
+    black_nn_distr = episode_data["black_nn_distr"]
+    white_nn_distr = episode_data["white_nn_distr"]
     black_predicted = episode_data["black_predicted"]
     white_predicted = episode_data["white_predicted"]
 
-    # Case 1: self-play
-    # both black and white side should get a reward
-    if self_play:
-        if winner == 2:
-            policy_reward_black = 0
-            policy_reward_white = 0
-        else:
-            policy_reward_black = 1 if winner == 0 else -1
-            policy_reward_white = -policy_reward_black
-    # Case 2: fixed opponent
-    # we shall only use OUR reward
+    # We are doing self-play, so both black and white side should get a reward
+    if winner == 2:
+        policy_reward_black = 0
+        policy_reward_white = 0
     else:
-        our_color = episode_data["our_color"]
-        if winner == 2:
-            our_reward = 0
-        else:
-            our_reward = 1 if winner == our_color else -1
-        policy_reward_black = our_reward if our_color == 0 else 0
-        policy_reward_white = our_reward if our_color == 1 else 0
+        policy_reward_black = 1 if winner == 0 else -1
+        policy_reward_white = -policy_reward_black
 
-    # First: calculate the actor loss
-
-    if len(black_log_probs) and training_algo == "reinforce":
-        black_log_probs = torch.stack(black_log_probs)
-        black_actor_loss = -black_log_probs.mean() * policy_reward_black
-    elif len(black_log_probs) and training_algo == "actor_critic":
-        black_log_probs = torch.stack(black_log_probs)
-        black_predicted = torch.stack(black_predicted)
-        black_advantage = policy_reward_black - black_predicted.detach()
-        black_actor_loss = -(black_log_probs * black_advantage).mean()
+    # First: calculate the policy loss
+    if len(black_mcts_distr):
+        black_mcts_distr = torch.stack(black_mcts_distr).detach()
+        black_nn_distr = torch.stack(black_nn_distr)
+        black_policy_loss = -(black_mcts_distr * torch.log(black_nn_distr.clamp_min(1e-8))).sum(dim=1).mean()
     else:
-        black_actor_loss = torch.tensor(0.0, device=device)
+        black_policy_loss = torch.tensor(0.0, device=device)
 
-    if len(white_log_probs) and training_algo == "reinforce":
-        white_log_probs = torch.stack(white_log_probs)
-        white_actor_loss = -white_log_probs.mean() * policy_reward_white
-    elif len(white_log_probs) and training_algo == "actor_critic":
-        white_log_probs = torch.stack(white_log_probs)
-        white_predicted = torch.stack(white_predicted)
-        white_advantage = policy_reward_white - white_predicted.detach()
-        white_actor_loss = -(white_log_probs * white_advantage).mean()
+    if len(white_mcts_distr):
+        white_mcts_distr = torch.stack(white_mcts_distr).detach()
+        white_nn_distr = torch.stack(white_nn_distr)
+        white_policy_loss = -(white_mcts_distr * torch.log(white_nn_distr.clamp_min(1e-8))).sum(dim=1).mean()
     else:
-        white_actor_loss = torch.tensor(0.0, device=device)
+        white_policy_loss = torch.tensor(0.0, device=device)
 
-    actor_loss = black_actor_loss + white_actor_loss
+    policy_loss = (black_policy_loss + white_policy_loss) / 2
 
-    # Second: calculate the critic loss
-    if len(black_predicted) and training_algo == "actor_critic":
+    # Second: calculate the value loss
+    if len(black_predicted):
         if not torch.is_tensor(black_predicted):
             black_predicted = torch.stack(black_predicted)
-        black_critic_loss = ((black_predicted - policy_reward_black)**2).mean()
+        black_value_loss = ((black_predicted - policy_reward_black)**2).mean()
     else:
-        black_critic_loss = torch.tensor(0.0, device=device)
+        black_value_loss = torch.tensor(0.0, device=device)
 
-    if len(white_predicted) and training_algo == "actor_critic":
+    if len(white_predicted):
         if not torch.is_tensor(white_predicted):
             white_predicted = torch.stack(white_predicted)
-        white_critic_loss = ((white_predicted - policy_reward_white)**2).mean()
+        white_value_loss = ((white_predicted - policy_reward_white)**2).mean()
     else:
-        white_critic_loss = torch.tensor(0.0, device=device)
+        white_value_loss = torch.tensor(0.0, device=device)
 
-    critic_loss = value_coef * (black_critic_loss + white_critic_loss)
+    value_loss = value_coef * (black_value_loss + white_value_loss) / 2
 
-    # Finally: calculate the entropy loss
-    trainable_entropies = episode_data["trainable_entropies"]
-    if len(trainable_entropies):
-        entropy_loss = -regular_beta * torch.stack(trainable_entropies).mean()
-    else:
-        entropy_loss = torch.tensor(0.0, device=device)
-
-    return actor_loss, critic_loss, entropy_loss
-
+    return policy_loss, value_loss
 
 def plot_loss_by_iter(loss_by_type):
     actor_loss = [loss.item() if torch.is_tensor(loss) else loss for loss in loss_by_type["actor"]]

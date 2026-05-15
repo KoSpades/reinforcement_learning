@@ -686,3 +686,5 @@ $$L = (z - v)^2 - \pi^\top \log(\mathbf{p}) + c||\theta||^2$$
 Let's still keep the original functions in train. We will write new ones: some code repetition will be tolerated :)
 
 In progress: will finish tomorrow.
+
+## 05/14/26
