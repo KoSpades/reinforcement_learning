@@ -402,14 +402,8 @@ def generate_episode_for_mcts(start_state,
         active_player = our_player if our_turn else opponent
         _, _, _, cur_value, nn_action_distr = active_player.select_action(cur_state, cur_turn, sample=True)
         if cur_action == -1:
-            # In this case, we got a draw, and there's nothing to train, so we just ignore this episode.
-            episode_history = []
-            black_mcts_distr = []
-            white_mcts_distr = []
-            black_nn_distr = []
-            white_nn_distr = []
-            black_predicted = []
-            white_predicted = []
+            if len(episode_history):
+                episode_history.append((cur_state, 2))
             break
         episode_history.append((cur_state, cur_action))
         if cur_turn == 0:
@@ -429,13 +423,7 @@ def generate_episode_for_mcts(start_state,
             cur_turn = 1 - cur_turn
             our_turn = not our_turn
         elif res == 2:
-            episode_history = []
-            black_mcts_distr = []
-            white_mcts_distr = []
-            black_nn_distr = []
-            white_nn_distr = []
-            black_predicted = []
-            white_predicted = []
+            episode_history.append((next_state, res))
             break
         # Second case: reached win termination
         else:
@@ -683,7 +671,7 @@ def inspect_mcts_bookkeeping(loss_by_type):
             [value.item() if torch.is_tensor(value) else value for value in values],
             dtype=torch.float32,
         )
-        print(f"{label}: average={values_tensor.mean().item():.4f}")
+        print(f"{label}: average={values_tensor.mean().item():.2f}")
 
     print("------ MCTS Predicted Value Percentiles ------")
     _print_percentiles("black_predicted", black_predicted_values)

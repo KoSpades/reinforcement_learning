@@ -80,31 +80,64 @@ if __name__ == "__main__":
     print("-----------Evaluation starting-------------")
 
     our_player = OurPlayer(MCTS_MODELS_DIR / "final_policy_1000.pt")
+    # our_player = OurPlayer(FROZEN_DIR / "five.pt")
 
     # our_opponent = RandomOpponent()
     # num_wins, num_draws, num_games = calc_win_rate(our_player, our_opponent, use_mcts=True)
-    # print(f"Win rate against random: {num_wins / num_games}")
+    # print(f"Win rate against random: {num_wins / num_games:.2f}")
 
     # our_opponent = OurPlayer(ACTOR_CRITIC_MODELS_DIR / "final_policy_1000.pt")
     # num_wins, num_draws, num_games = calc_win_rate(our_player, our_opponent, use_mcts=True)
-    # print(f"Win rate against 1000 Actor-Critic: {num_wins / num_games}")
+    # print(f"Win rate against 1000 Actor-Critic: {num_wins / num_games:.2f}")
 
     # our_opponent = FirstOpponent(ACTOR_CRITIC_MODELS_DIR / "final_policy_1000.pt")
     # num_wins, num_draws, num_games = calc_win_rate(our_player, our_opponent, use_mcts=True, dirichlet_enabled=False)
-    # print(f"Win rate against Actor-Critic heuristic: {num_wins / num_games}")
+    # print(f"Win rate against Actor-Critic heuristic: {num_wins / num_games:.2f}")
 
     # our_opponent = OurPlayer(REINFORCE_MODELS_DIR / "final_policy_1000.pt")
     # num_wins, num_draws, num_games = calc_win_rate(our_player, our_opponent, use_mcts=True)
-    # print(f"Win rate against 1000 REINFORCE: {num_wins / num_games}")
+    # print(f"Win rate against 1000 REINFORCE: {num_wins / num_games:.2f}")
 
     # our_opponent = FirstOpponent(REINFORCE_MODELS_DIR / "final_policy_1000.pt")
     # num_wins, num_draws, num_games = calc_win_rate(our_player, our_opponent, use_mcts=True, dirichlet_enabled=False)
-    # print(f"Win rate against REINFORCE heuristic: {num_wins / num_games}")
+    # print(f"Win rate against REINFORCE heuristic: {num_wins / num_games:.2f}")
 
     # our_opponent = OurPlayer(ACTOR_CRITIC_MODELS_DIR / "final_policy_10000.pt")
     # num_wins, num_draws, num_games = calc_win_rate(our_player, our_opponent, use_mcts=True, dirichlet_enabled=False)
-    # print(f"Win rate against 10000 AC: {num_wins / num_games}")
+    # print(f"Win rate against 10000 AC: {num_wins / num_games:.2f}")
+
+    our_opponent = OurPlayer(FROZEN_DIR / "three.pt")
+    num_wins, num_draws, num_games = calc_win_rate(our_player, 
+                                                   our_opponent, 
+                                                   use_mcts=False, 
+                                                   dirichlet_enabled=False, 
+                                                   num_games=500)
+    print(f"Wins vs. three.pt: {num_wins / num_games:.2f}")
+    print(f"Draws vs. three.pt: {num_draws / num_games:.2f}")
 
     our_opponent = OurPlayer(FROZEN_DIR / "four.pt")
-    num_wins, num_draws, num_games = calc_win_rate(our_player, our_opponent, use_mcts=True, dirichlet_enabled=False)
-    print(f"Win rate against four.pt: {num_wins / num_games}")
+    num_wins, num_draws, num_games = calc_win_rate(our_player, 
+                                                   our_opponent, 
+                                                   use_mcts=False, 
+                                                   dirichlet_enabled=False, 
+                                                   num_games=500)
+    print(f"Wins vs. four.pt: {num_wins / num_games:.2f}")
+    print(f"Draws vs. four.pt: {num_draws / num_games:.2f}")
+
+    our_opponent = OurPlayer(FROZEN_DIR / "five.pt")
+    num_wins, num_draws, num_games = calc_win_rate(our_player, 
+                                                   our_opponent, 
+                                                   use_mcts=False, 
+                                                   dirichlet_enabled=False, 
+                                                   num_games=500)
+    print(f"Wins vs. five.pt: {num_wins / num_games:.2f}")
+    print(f"Draws vs. five.pt: {num_draws / num_games:.2f}")
+
+    our_opponent = OurPlayer(FROZEN_DIR / "six.pt")
+    num_wins, num_draws, num_games = calc_win_rate(our_player, 
+                                                   our_opponent, 
+                                                   use_mcts=False, 
+                                                   dirichlet_enabled=False, 
+                                                   num_games=500)
+    print(f"Wins vs. six.pt: {num_wins / num_games:.2f}")
+    print(f"Draws vs. six.pt: {num_draws / num_games:.2f}")

@@ -709,3 +709,11 @@ Saved a 10k iterations version to frozen, called four.
 We will probs do more training: now lowering lr to 1e-4, and random moves from fixed 2 moves to 0 to 3. 
 
 Let's also spent sometime to understand the loss values from debugging output, I am not really getting it right now.
+
+## 05/15/26
+
+Most recent in six.pt. More training is still giving meaningful improvements. (as of 16:17).
+
+It's finally at human level now :) (played a few human games, all games ended up in draw, since the board is only 9 by 9). So this is a good wrapup to the project.
+
+We can do 13 by 13 in a later date. (and also learn about the effiency techniques that we would need to employ to enable that) But this project is successful. 

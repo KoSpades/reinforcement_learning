@@ -2,7 +2,7 @@ from pathlib import Path
 
 
 BOARD_SIZE = 9
-TRAIN_ITER = 1000
+TRAIN_ITER = 2000
 UI_ITER = 1000
 TRAINING_ALGO = "mcts"
 USE_MCTS_UI = True
