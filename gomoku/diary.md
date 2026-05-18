@@ -717,3 +717,9 @@ Most recent in six.pt. More training is still giving meaningful improvements. (a
 It's finally at human level now :) (played a few human games, all games ended up in draw, since the board is only 9 by 9). So this is a good wrapup to the project.
 
 We can do 13 by 13 in a later date. (and also learn about the effiency techniques that we would need to employ to enable that) But this project is successful. 
+
+## 05/18/26
+
+It seems like we would need to add Replay buffer, to gain experiene into Batch training. That will be the final change we make to the repo (and potentially some training on 13 by 13, after we have implemented the Replay Buffer). 
+
+We will implement this at some point.
