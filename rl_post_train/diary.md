@@ -44,3 +44,17 @@ Random Idea: this benchmark is potentially one place that we can test the AI fac
 3. We need a budget: let's aim for $500. This should be sufficient for a portfolio project, and the way we manage cost may also involve some useful thinking later on.
 
 We are ready to get started with the codebase.
+
+## 05/29/26
+
+Bad news: using cloud models, one run of the task one takes a few seconds to complete. But local Qwen3-8b does not complete even after 15 minutes. Something is probably wrong.
+
+It seems like we need to change ollama/Qwen3 to ollama_chat/Qwen3, and that at least got a conversation going.
+
+But, 1 task run in airline took 12 minutes to complete (without succeding). If 1 rollout is taking 12 minutes, this doesn't feel like the right way to get much data for training :) We need to look into better options.
+
+We did some nasty steps to migrate this to Google colab, but at least things are running now. We need an efficient pipeline to do this migration (likely a script?)
+
+But task 1 only took 40 seconds for us to get data. This is massive improvement, so we have to use cloud, and that's the most important next step. Currently testing this with a A100.
+
+Some other TODOs: study the airline domain in close details to understand the databases, the policies, the tools, etc. etc., so that we can diagonose problems and prepare ourselves for the post-training step.
