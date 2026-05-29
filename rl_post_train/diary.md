@@ -40,6 +40,7 @@ Random Idea: this benchmark is potentially one place that we can test the AI fac
 
 ### Fun (Important) things to think about before getting started
 1. We need to pick a model: looks like Qwen3-8B is just the right fit.
-2. We need a budget: let's aim for $500. This should be sufficient for a portfolio project, and the way we manage cost may also involve some useful thinking later on.
+2. We need to pick a domain to have a sharp focus: looks like airline is a good one.
+3. We need a budget: let's aim for $500. This should be sufficient for a portfolio project, and the way we manage cost may also involve some useful thinking later on.
 
 We are ready to get started with the codebase.
