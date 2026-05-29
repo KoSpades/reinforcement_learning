@@ -38,4 +38,8 @@ Before we start inspecting the tau-3 bench in details, we will first read the or
 
 Random Idea: this benchmark is potentially one place that we can test the AI factory idea too, independent of the post-training exercise we want to do.
 
+### Fun (Important) things to think about before getting started
+1. We need to pick a model: looks like Qwen3-8B is just the right fit.
+2. We need a budget: let's aim for $500. This should be sufficient for a portfolio project, and the way we manage cost may also involve some useful thinking later on.
+
 We are ready to get started with the codebase.
