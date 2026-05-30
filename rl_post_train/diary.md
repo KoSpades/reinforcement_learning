@@ -36,7 +36,9 @@ Before we start inspecting the tau-3 bench in details, we will first read the or
 - User simulator, i.e., an LLM pretending to be the user for the task. Agent doesn't interact with the user simulator directly: the benchmark code sits in between and mediates the interaction.
 - Database/world state (e.g. information about reservations, flights, etc.). Stored as structured data.
 
-Random Idea: this benchmark is potentially one place that we can test the AI factory idea too, independent of the post-training exercise we want to do.
+Random Idea 1: this benchmark is potentially one place that we can test the AI factory idea too, independent of the post-training exercise we want to do.
+
+Random Idea 2: this benchmark is also a good place to work on the LLM for RL (having a seperate policy) idea.
 
 ### Fun (Important) things to think about before getting started
 1. We need to pick a model: looks like Qwen3-8B is just the right fit.
@@ -60,6 +62,8 @@ But task 1 only took 40 seconds for us to get data. This is massive improvement,
 Some other TODOs: study the airline domain in close details to understand the databases, the policies, the tools, etc. etc., so that we can diagonose problems and prepare ourselves for the post-training step. The important files are in:
 - src/tau2/domains/airline
 - data/tau2/domains/airline
+
+Let's also figure out how the default agent is implemented.
 
 Question: but if we collect rollouts from the 50 tasks, then RL post-train on these 50 tasks, aren't we cheating? Let's also figure out the answer to this question.
 
