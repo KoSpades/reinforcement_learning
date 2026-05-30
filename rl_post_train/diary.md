@@ -57,4 +57,13 @@ We did some nasty steps to migrate this to Google colab, but at least things are
 
 But task 1 only took 40 seconds for us to get data. This is massive improvement, so we have to use cloud, and that's the most important next step. Currently testing this with a A100.
 
-Some other TODOs: study the airline domain in close details to understand the databases, the policies, the tools, etc. etc., so that we can diagonose problems and prepare ourselves for the post-training step.
+Some other TODOs: study the airline domain in close details to understand the databases, the policies, the tools, etc. etc., so that we can diagonose problems and prepare ourselves for the post-training step. The important files are in:
+- src/tau2/domains/airline
+- data/tau2/domains/airline
+
+Question: but if we collect rollouts from the 50 tasks, then RL post-train on these 50 tasks, aren't we cheating? Let's also figure out the answer to this question.
+
+## 05/30/26
+
+Need to finish the efficient migration pipeline/script done.
+Then start studying the airline domain.
