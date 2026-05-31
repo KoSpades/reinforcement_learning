@@ -78,5 +78,11 @@ git clone https://github.com/KoSpades/reinforcement_learning.git /content/reinfo
 OPENAI_API_KEY="<MY_KEY>" bash /content/reinforcement_learning/rl_post_train/colab_tau2_airline_qwen.sh
 ```
 
+Optional arguments after the bash command:
+- --num-tasks 10 (how many tasks out of the benchmark do we want to do, default 50)
+- --runs 2 (how many runs do we want to do, default 1)
+
+19:11
+
 ### Studying the airline domain in depth
 
