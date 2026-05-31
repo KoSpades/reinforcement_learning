@@ -19,7 +19,7 @@ set -euo pipefail
 #   export VLLM_MODEL="Qwen/Qwen3-8B"
 #   export OLLAMA_MODEL="qwen3:8b"
 #   export USER_MODEL="gpt-4.1-2025-04-14"
-#   export AGENT_TIMEOUT="60"
+#   export AGENT_TIMEOUT="120"
 #   export AGENT_NUM_RETRIES="0"
 # Usage:
 #   bash colab_tau2_airline_qwen.sh
@@ -68,7 +68,7 @@ NUM_TASKS="${NUM_TASKS:-}"
 RUNS="${RUNS:-1}"
 SAVE_PREFIX="${SAVE_PREFIX:-}"
 MAX_CONCURRENCY="${MAX_CONCURRENCY:-1}"
-AGENT_TIMEOUT="${AGENT_TIMEOUT:-60}"
+AGENT_TIMEOUT="${AGENT_TIMEOUT:-120}"
 AGENT_NUM_RETRIES="${AGENT_NUM_RETRIES:-0}"
 PUSH_RESULTS="${PUSH_RESULTS:-0}"
 RUN_TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
@@ -114,7 +114,7 @@ Environment:
   AGENT_MODEL         Default: openai/${VLLM_SERVED_MODEL} for vllm, ollama_chat/${OLLAMA_MODEL} for ollama.
   USER_MODEL          Default: gpt-4.1-2025-04-14.
   MAX_CONCURRENCY     Default: 1.
-  AGENT_TIMEOUT       Timeout in seconds for local agent calls. Default: 60.
+  AGENT_TIMEOUT       Timeout in seconds for local agent calls. Default: 120.
   AGENT_NUM_RETRIES   LiteLLM retry count for local agent calls. Default: 0.
   PUSH_RESULTS        Commit and push generated results. Default: 0 unless GITHUB_TOKEN is set.
 EOF
