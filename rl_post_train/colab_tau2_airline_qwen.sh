@@ -60,6 +60,7 @@ VLLM_GPU_MEMORY_UTILIZATION="${VLLM_GPU_MEMORY_UTILIZATION:-0.90}"
 VLLM_MAX_MODEL_LEN="${VLLM_MAX_MODEL_LEN:-8192}"
 VLLM_TOOL_CALL_PARSER="${VLLM_TOOL_CALL_PARSER:-hermes}"
 VLLM_EXTRA_ARGS="${VLLM_EXTRA_ARGS:-}"
+VLLM_INSTALL_ARGS="${VLLM_INSTALL_ARGS:---torch-backend=auto --reinstall}"
 
 OLLAMA_MODEL="${OLLAMA_MODEL:-qwen3:8b}"
 USER_MODEL="${USER_MODEL:-gpt-4.1-2025-04-14}"
@@ -108,6 +109,7 @@ Environment:
   VLLM_SERVED_MODEL   Default: qwen3-8b.
   VLLM_PORT           Default: 8000.
   VLLM_TOOL_CALL_PARSER Default: hermes.
+  VLLM_INSTALL_ARGS   Default: --torch-backend=auto --reinstall.
   OLLAMA_MODEL        Default: qwen3:8b.
   AGENT_MODEL         Default: openai/${VLLM_SERVED_MODEL} for vllm, ollama_chat/${OLLAMA_MODEL} for ollama.
   USER_MODEL          Default: gpt-4.1-2025-04-14.
@@ -232,7 +234,8 @@ if [[ "${AGENT_BACKEND}" == "ollama" ]]; then
   ollama pull "${OLLAMA_MODEL}"
 else
   echo "==> Installing vLLM"
-  uv pip install vllm
+  read -r -a VLLM_INSTALL_ARGS_ARRAY <<< "${VLLM_INSTALL_ARGS}"
+  uv pip install "${VLLM_INSTALL_ARGS_ARRAY[@]}" vllm
 
   echo "==> Starting vLLM"
   VLLM_HEALTH_URL="${VLLM_API_BASE%/v1}/health"

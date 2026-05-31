@@ -75,7 +75,7 @@ Because running locally to get rollouts is painfully slow, we will do the actual
 
 ```bash
 git clone https://github.com/KoSpades/reinforcement_learning.git /content/reinforcement_learning
-OPENAI_API_KEY="<MY_KEY>" bash /content/reinforcement_learning/rl_post_train/colab_tau2_airline_qwen.sh
+OPENAI_API_KEY= bash /content/reinforcement_learning/rl_post_train/colab_tau2_airline_qwen.sh
 ```
 
 Optional arguments after the bash command:
