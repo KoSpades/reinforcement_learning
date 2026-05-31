@@ -82,7 +82,7 @@ Optional arguments after the bash command:
 - --num-tasks 10 (how many tasks out of the benchmark do we want to do, default 50)
 - --runs 2 (how many runs do we want to do, default 1)
 
-19:11
+After doing some deep digging, it seems like vLLM is much better than Ollama to use on A100, so we will switch the script to use vLLM to serve Qwen on the cloud. Let's understand why (what ollama and vLLM even are, and why such a big performance discrepancy). It seems like with vLLM, we can also get better max-concurrency (Ollama seems to only do 1), so let's also study what's a good max-concurrency to use, before we later do serious experiments (which will take a long time). vLLM seem to give the maxContextLength exceeded error quite a few times, we should also look into why.
 
 ### Studying the airline domain in depth
 
