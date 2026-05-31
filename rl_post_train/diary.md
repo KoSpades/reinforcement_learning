@@ -85,12 +85,21 @@ Optional arguments after the bash command:
 After doing some deep digging, it seems like vLLM is much better than Ollama to use on A100, so we will switch the script to use vLLM to serve Qwen on the cloud. Let's understand why (what ollama and vLLM even are, and why such a big performance discrepancy). It seems like with vLLM, we can also get better max-concurrency (Ollama seems to only do 1). 
 
 Let's also study what's a good max-concurrency to use, before we later do serious experiments (which will take a long time). 
-- we experimented with max_concurrency=16 vs =8. The speed up was little from 16 to 8 (12 minutes down to 10), but results at 8 has less agent timeout. With this in consideration, we will fix on the max_concurrecy of 8.
+- we experimented with max_concurrency=16 vs =8. The speed up was little from 16 to 8 (12 minutes down to 10), but results at 8 has less agent timeout. With this in consideration, we will fix on the max_concurrecy of 8. This is a 50X speedup for collecting rollouts vs. yesterday :)
 
 vLLM seem to give the maxContextLength exceeded error quite a few times, we should also look into why.
 - After checking some math, it seems like we can 4x the context length to 32K with little trouble. So let's do that.
 - Doing this seems to solve the context length problem entirely.
 
 Currently, we are giving a 1 min max generation time for the agent. We may also need to adjust this based on how many timeouts we are actually getting. 
-- We decided to settle down on 2.
+- We decided to settle down on 2 min.
+
+### Project Settings
+- model: Qwen3-8B
+- serving: vLLM
+- machine: Colab A100 80GB
+- domain: airline
+- max_model_len: 32768
+- max_concurrency: 8
+- agent_response_timeout: 120s
 
