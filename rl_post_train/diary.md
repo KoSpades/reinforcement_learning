@@ -69,5 +69,14 @@ Question: but if we collect rollouts from the 50 tasks, then RL post-train on th
 
 ## 05/30/26
 
-Need to finish the efficient migration pipeline/script done.
-Then start studying the airline domain.
+### Commands to get rollouts from Google Colab 
+
+Because running locally to get rollouts is painfully slow, we will do the actual rollouts from Colab. Run the following commands:
+
+```bash
+git clone https://github.com/KoSpades/reinforcement_learning.git /content/reinforcement_learning
+OPENAI_API_KEY="<MY_KEY>" bash /content/reinforcement_learning/rl_post_train/colab_tau2_airline_qwen.sh
+```
+
+### Studying the airline domain in depth
+
