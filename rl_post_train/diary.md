@@ -164,4 +164,4 @@ There are three major tables:
     - **Flying**: {"flying", actual_departure_time, estimated_arrival_time}
     - **Landed**: {"available", actual_departure_time_est, actual_arrival_time_est}
 
-We studied the data models closely, and the three core DBs (flights, users, reservations). We will do tools next, then start with individual tasks one by one to understand what's the expected outcome and their failure modes.
+We studied the data models closely, and the three core DBs (flights, users, reservations). We will do tools next, then start with individual tasks one by one to understand what's the expected outcome and their failure modes, then study how the default agent is implemented.
