@@ -103,3 +103,65 @@ Currently, we are giving a 1 min max generation time for the agent. We may also 
 - max_concurrency: 8
 - agent_response_timeout: 120s
 
+## 05/31/26
+
+We have a reasonably efficient pipeline on the cloud to gather rollouts.Let's switch gear a bit today and do some deep dive into the airline domain.
+
+### The Airline Domain Data Model
+
+There are three major tables: 
+- Users: stores customer accounts (who the users are)
+- Reservations: bookings of trips made by customers (what users have booked)
+- Flights: scheduled flights offered by the airline (what the airline provides)
+
+**User**:
+- user_id: primary key
+- name
+- address
+- email
+- dob
+- payment_methods: [CreditCard, GiftCard, Certificate]
+    - **CreditCard**: {"credit_card", brand: str, last_four}
+    - **GiftCard**: {"gift_card", amount, id}
+    - **Certification**: {"certificate", amount}
+- saved_passengers: a user can save multiple passenger profiles in their account for later bookings
+    - List[**Passenger**]: {first_name, last_name, dob}
+- membership: ["gold"; "silver"; "regular"]
+- reservations: a list of foreign key references to **Reservation**'s reservation_id
+
+**Reservation**:
+- reservation_id: primary key
+- user_id: foreign key to user_id in **User**
+    - who made the reservation
+- origin: str; "ORD"
+- destination
+- flight_type: ["round_trip"; "one_way"]
+- cabin: ["business", "economy", "business_economy"]
+- flights: a list of flights in the reservation
+    - List[**ReservationFlight**]: {flight_number, origin, destination, date, price}
+- payment_history: a list of payments
+    - List[**Payment**]: {payment_id, amount}
+- passengers: a list of passengers on the reservation
+    - List[**Passenger**]: {first_name, last_name, dob}
+- created_at: str, timestamp when trip was created
+- total_baggages: int
+- nonfree_baggages: int, number of paid bags
+- insurance: ["yes", "no"]
+- status: [none, "cancelled"]
+
+**Flight**
+- flight_number: primary key
+- origin: str; "ORD"
+- destination
+- scheduled_departure_time_est: str
+- schedules_arrival_time_est: str
+- dates: a dict where keys are dates ("2015-08-02"), and values are **FlightDateStatus**
+    - **Available**: {status: "available", available_seats: dict[CabinClass, int], prices: dict[CabinClass, int]}
+    - **Cancelled**: {"cancelled"}
+    - **Delayed**: {"delayed", estimated_departure_time, 
+    estimated_arrival_time}
+    - **OnTime**: {"on_time", estimated_departure_time, estimated_arrival_time}
+    - **Flying**: {"flying", actual_departure_time, estimated_arrival_time}
+    - **Landed**: {"available", actual_departure_time_est, actual_arrival_time_est}
+
+We studied the data models closely, and the three core DBs (flights, users, reservations). We will do tools next, then start with individual tasks one by one to understand what's the expected outcome and their failure modes.
