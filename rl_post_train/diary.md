@@ -204,3 +204,38 @@ Write Operations
         - Calculate total fee; verify payment methods are valid; and ensure these two amounts match exactly.
         - If all valid, deduct GiftCard balance or remove used Certificate; reduce available seats on booked flights; adds Reservation to DB; associate the Reservation with the right User.
     - note: all above steps can lead to their associated failure modes.
+
+8. cancel_reservation(reservation_id):
+    - intput: Reservation ID to cancel
+    - output: 1) status of reservation is set to "cancelled". 2) negative (refunded) amounts are appended to Reservation.payment_history
+    - note: 1) seats are not actually released from the flights, 2) no refunding actually happens.
+
+9. send_certificate(user_id, amount):
+    - impl: picks from 3 hardcoded certificate IDs, then assign the first free one to User.payment_methods. Else, raise an error.
+
+10. update_reservation_baggages(reservation_id, total_bags, nonfree_bags, payment_id):
+    - impl: based on the new bagagge info, check if payment_id can successfully accomodate teh change. If yes, update the reservation.
+    - note: 
+        - if payment_method is not yet in Reservation, add it to Reservation.payment_history.
+        - failure modes: you cannot use Certificates to update; payment_method not found for user, etc.
+
+11. update_reservation_passengers(reservation_id, passengers: List[Passenger]):
+    - impl: update a Reservation's passengers field
+    - note: number of passengers must match up exactly.
+
+12. update_reservation_flights(reservation_id, payment_id, cabin, flights):
+    - impl:
+        - Given user's requirements for the flight instances (flight number + date) and cabin, first calculate the new amount needs to be paid. 
+        - Then make a new Reservation.payment_history if payment is successful.
+        - Update the reservation instance.
+    - note: failure modes: flights not available; payment failure; etc.
+
+Generic Operations
+
+13. calculate(expression):
+    - impl: calculate the result of a math expression.
+
+14. transfer_to_human_agent(summary):
+    - impl: returns a literal string "Transfer successful!"
+
+These are all the 14 tools in the airline domain. 
