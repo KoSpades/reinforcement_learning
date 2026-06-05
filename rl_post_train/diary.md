@@ -193,3 +193,14 @@ Read Operations
     - output: status like "cancelled", "on_time", etc.
     - impl: direct call to Flight DB
     - note: (flight_no, date) uniquely identifies a flight instance
+
+Write Operations
+
+7. book_reservation(user_id, origin, dest, flight_type, cabin, flights, passengers, payment_methods, total_bags, nonfree_bgas, insurance):
+    - input: these are essentially the fields to create a Reservation
+    - impl: 
+        - Look up User.
+        - Check all Flights and their seats' availability.
+        - Calculate total fee; verify payment methods are valid; and ensure these two amounts match exactly.
+        - If all valid, deduct GiftCard balance or remove used Certificate; reduce available seats on booked flights; adds Reservation to DB; associate the Reservation with the right User.
+    - note: all above steps can lead to their associated failure modes.
