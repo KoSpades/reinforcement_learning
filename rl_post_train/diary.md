@@ -107,7 +107,7 @@ Currently, we are giving a 1 min max generation time for the agent. We may also 
 
 We have a reasonably efficient pipeline on the cloud to gather rollouts.Let's switch gear a bit today and do some deep dive into the airline domain.
 
-### The Airline Domain Data Model
+## The Airline Domain Data Model
 
 There are three major tables: 
 - Users: stores customer accounts (who the users are)
@@ -151,7 +151,7 @@ There are three major tables:
 
 **Flight**
 - flight_number: primary key
-- origin: str; "ORD"
+- origin
 - destination
 - scheduled_departure_time_est: str
 - schedules_arrival_time_est: str
@@ -162,6 +162,34 @@ There are three major tables:
     estimated_arrival_time}
     - **OnTime**: {"on_time", estimated_departure_time, estimated_arrival_time}
     - **Flying**: {"flying", actual_departure_time, estimated_arrival_time}
-    - **Landed**: {"available", actual_departure_time_est, actual_arrival_time_est}
+    - **Landed**: {"landed", actual_departure_time_est, actual_arrival_time_est}
 
 We studied the data models closely, and the three core DBs (flights, users, reservations). We will do tools next, then start with individual tasks one by one to understand what's the expected outcome and their failure modes, then study how the default agent is implemented.
+
+## 06/04/21
+
+A first inspection shows that there are 14 tools in total, this is actually a small enough action space that can potentially be brute forced even with a value-table lookup -> this may be a useful insight later on.
+
+## The 14 Airline Domain Tools
+
+Read Operations
+
+1. get_reservation_details(reservation_id):
+    - output: info about a Reservation (all its fields)
+    - impl: direct call to Reservation DB
+2. get_user_details(user_id):
+    - output: info about a User
+    - impl: direct call to User DB
+3. list_all_airports():
+    - output: a hardcoded list of airports with their codes
+4. search_direct_flight(origin, dest, date):
+    - input: "ORD", "LGA", "2014-01-01"
+    - output: all DirectFlgihts between origin and dest on date
+    - impl: fetch from DB a list of DirectFlight meeting the requirements. {flight_no, origin, dest, arrival/departure_time, seats, price, etc.}
+5. search_one_stop_flight(origin, dest, date):
+    - output: all pairs of DirectFlights between origin and dest
+    - impl: outer loops fetch all departing flights from origin, inner loops fetches all arriving flights at dest.
+6. get_flight_status(flight_no, date):
+    - output: status like "cancelled", "on_time", etc.
+    - impl: direct call to Flight DB
+    - note: (flight_no, date) uniquely identifies a flight instance
