@@ -238,4 +238,21 @@ Generic Operations
 14. transfer_to_human_agent(summary):
     - impl: returns a literal string "Transfer successful!"
 
-These are all the 14 tools in the airline domain. 
+These are all the 14 tools in the airline domain. The next step is to understand the default agent's implementation. 
+
+## 06/05/26
+
+Looks like the relevant agent logic is in the following places. We will study them:
+- agent/llm_agent.py:24-135
+- utils/llm_utils.py:355-469
+- orchestrator/orchestrator.py:932-988
+
+### Default Agent logic
+
+Orchestrator:
+
+Agent either sends the simulated user a message or makes a tool call:
+- Sending a message: adding it to conversation. User then gets control.
+- Making a tool call: agent sees the result, and immediately gets control again.
+
+
