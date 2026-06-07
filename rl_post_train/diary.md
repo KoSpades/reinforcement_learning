@@ -275,3 +275,5 @@ Then, the model picks between 1) doing a tool call, or 2) returns a message. If 
 - Conceptually, it's similar to in-context programming. 
     - The pretrained model learned the general behaviour of "when the prompt contains tool definitions, I need to decide between return a regualar NL message, or a structured output matching some tool definitions in the prompt"
 - The model needs no special knowledge about the domain-specific tools (e.g. airline). It just needs the tool definitions as context.
+
+At its core, the default agent is very dumb: paste all policies, paste all conversation history (including tool results), then rely on the underlying LLM for picking tools.
