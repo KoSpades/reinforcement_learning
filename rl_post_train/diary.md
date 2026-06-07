@@ -240,19 +240,38 @@ Generic Operations
 
 These are all the 14 tools in the airline domain. The next step is to understand the default agent's implementation. 
 
-## 06/05/26
+## 06/06/26
 
 Looks like the relevant agent logic is in the following places. We will study them:
 - agent/llm_agent.py:24-135
 - utils/llm_utils.py:355-469
 - orchestrator/orchestrator.py:932-988
 
-### Default Agent logic
+## Default Agent logic
 
 Orchestrator:
 
-Agent either sends the simulated user a message or makes a tool call:
+During the agent's turn, it either sends the simulated user a message or makes a tool call:
 - Sending a message: adding it to conversation. User then gets control.
 - Making a tool call: agent sees the result, and immediately gets control again.
 
+Agent: 
 
+In summary, the agent just repeated called generate() in each turn, where generate() receives the following inputsL
+- system_prompt: 
+    - You are a customer service agent that helps the user according to the \<policy> provided below.
+    - In each turn you can either send a message to the user, or make a tool call. You cannot do both at the same time.
+    - Try to be helpful and always follow the policy. Already make sure you generate valid JSON only.
+    - the actual \<policy> text: for each domain, the entire policy is passed into every conversation. For airline domain, this is a 170-line file.
+- messages: every piece of UserMessage, ToolMessage, and Assistant(Agent)Message, generated during the entire conversation history.
+- all tool definitions
+- model: which model does generate() use
+
+Then, the model picks between 1) doing a tool call, or 2) returns a message. If it pickes a specific tool, this information is available in the response object.
+
+### How does the model know how to pick?
+- The underlying transformer architecture doesn't change. 
+- Picking a tool => the model outputs a structured output corresponding to a tool call, e.g. a JSON.
+- Conceptually, it's similar to in-context programming. 
+    - The pretrained model learned the general behaviour of "when the prompt contains tool definitions, I need to decide between return a regualar NL message, or a structured output matching some tool definitions in the prompt"
+- The model needs no special knowledge about the domain-specific tools (e.g. airline). It just needs the tool definitions as context.
