@@ -277,3 +277,7 @@ Then, the model picks between 1) doing a tool call, or 2) returns a message. If 
 - The model needs no special knowledge about the domain-specific tools (e.g. airline). It just needs the tool definitions as context.
 
 At its core, the default agent is very dumb: paste all policies, paste all conversation history (including tool results), then rely on the underlying LLM for picking tools.
+
+## 06/06/26
+
+Lots of code cleaning, and started a UI to inspect the actual converstaions. Right now it displays all the back and forth conversation between agent and user. We will think of adding new things to make it more information (e.g. displaying why the task failed; or the expected DB state, etc.)
