@@ -1,0 +1,10 @@
+{"step": 0, "timestamp": "2026-06-08T04:52:14.842031", "event": "waiting_for_user", "from_role": "agent", "to_role": "user", "details": {}}
+{"step": 0, "timestamp": "2026-06-08T04:52:15.648523", "event": "received_user_message", "from_role": "agent", "to_role": "user", "details": {}}
+{"step": 1, "timestamp": "2026-06-08T04:52:15.649184", "event": "waiting_for_agent", "from_role": "user", "to_role": "agent", "details": {}}
+{"step": 1, "timestamp": "2026-06-08T04:52:20.565336", "event": "received_agent_message", "from_role": "user", "to_role": "agent", "details": {}}
+{"step": 2, "timestamp": "2026-06-08T04:52:20.566056", "event": "executing_tool_calls", "from_role": "agent", "to_role": "env", "details": {"tool_call_count": 1}}
+{"step": 2, "timestamp": "2026-06-08T04:52:20.566305", "event": "received_tool_results", "from_role": "agent", "to_role": "env", "details": {}}
+{"step": 3, "timestamp": "2026-06-08T04:52:20.566727", "event": "waiting_for_agent", "from_role": "env", "to_role": "agent", "details": {}}
+{"step": 3, "timestamp": "2026-06-08T04:52:23.473881", "event": "received_agent_message", "from_role": "env", "to_role": "agent", "details": {}}
+{"step": 4, "timestamp": "2026-06-08T04:52:23.474517", "event": "waiting_for_user", "from_role": "agent", "to_role": "user", "details": {}}
+{"step": 4, "timestamp": "2026-06-08T04:52:24.089975", "event": "received_user_message", "from_role": "agent", "to_role": "user", "details": {}}
