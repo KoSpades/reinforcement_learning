@@ -1,6 +1,7 @@
 import json
 import os
 import time
+import traceback
 import uuid
 from abc import ABC, abstractmethod
 from copy import deepcopy
@@ -266,6 +267,34 @@ class BaseOrchestrator(ABC, Generic[BaseAgentT, BaseUserT, TrajectoryItemT]):
         task_id = str(getattr(self.task, "id", "unknown")).replace("/", "_")
         return base_dir / f"{self.domain}_task_{task_id}_{self.simulation_id}"
 
+    def _ensure_live_log_initialized(self) -> Path:
+        log_dir = self._live_conversation_dir()
+        log_dir.mkdir(parents=True, exist_ok=True)
+
+        if not self._live_log_initialized:
+            metadata = {
+                "domain": self.domain,
+                "task_id": getattr(self.task, "id", None),
+                "simulation_id": self.simulation_id,
+                "seed": self.seed,
+                "batch_id": os.getenv("TAU2_LIVE_BATCH_ID"),
+                "started_at": self._run_start_time or get_now(),
+            }
+            (log_dir / "metadata.json").write_text(
+                json.dumps(metadata, indent=2) + "\n"
+            )
+            (log_dir / "conversation.md").write_text(
+                f"# Live Conversation\n\n"
+                f"- domain: {self.domain}\n"
+                f"- task_id: {getattr(self.task, 'id', None)}\n"
+                f"- simulation_id: {self.simulation_id}\n\n"
+            )
+            (log_dir / "conversation.jsonl").write_text("")
+            (log_dir / "events.jsonl").write_text("")
+            self._live_log_initialized = True
+
+        return log_dir
+
     def _format_live_message(self, message: Message) -> str:
         if isinstance(message, ToolMessage):
             title = f"TOOL RESULT ({message.requestor})"
@@ -286,8 +315,7 @@ class BaseOrchestrator(ABC, Generic[BaseAgentT, BaseUserT, TrajectoryItemT]):
 
     def _append_live_event(self, event: str, details: Optional[dict] = None) -> None:
         try:
-            log_dir = self._live_conversation_dir()
-            log_dir.mkdir(parents=True, exist_ok=True)
+            log_dir = self._ensure_live_log_initialized()
             record = {
                 "step": self.step_count,
                 "timestamp": get_now(),
@@ -304,31 +332,28 @@ class BaseOrchestrator(ABC, Generic[BaseAgentT, BaseUserT, TrajectoryItemT]):
         except Exception as e:
             logger.warning(f"Failed to write live conversation event: {e}")
 
+    def _append_live_error(self, error: BaseException) -> None:
+        try:
+            details = {
+                "error": str(error),
+                "error_type": type(error).__name__,
+                "traceback": traceback.format_exc(),
+            }
+            self._append_live_event("infrastructure_error", details)
+            log_dir = self._ensure_live_log_initialized()
+            with (log_dir / "conversation.md").open("a") as f:
+                f.write(
+                    "\n### INFRASTRUCTURE ERROR\n\n"
+                    "```json\n"
+                    f"{json.dumps(details, indent=2)}\n"
+                    "```\n"
+                )
+        except Exception as e:
+            logger.warning(f"Failed to write live conversation error: {e}")
+
     def _append_live_message(self, message: Message) -> None:
         try:
-            log_dir = self._live_conversation_dir()
-            log_dir.mkdir(parents=True, exist_ok=True)
-
-            if not self._live_log_initialized:
-                metadata = {
-                    "domain": self.domain,
-                    "task_id": getattr(self.task, "id", None),
-                    "simulation_id": self.simulation_id,
-                    "seed": self.seed,
-                    "started_at": self._run_start_time or get_now(),
-                }
-                (log_dir / "metadata.json").write_text(
-                    json.dumps(metadata, indent=2) + "\n"
-                )
-                (log_dir / "conversation.md").write_text(
-                    f"# Live Conversation\n\n"
-                    f"- domain: {self.domain}\n"
-                    f"- task_id: {getattr(self.task, 'id', None)}\n"
-                    f"- simulation_id: {self.simulation_id}\n\n"
-                )
-                (log_dir / "conversation.jsonl").write_text("")
-                (log_dir / "events.jsonl").write_text("")
-                self._live_log_initialized = True
+            log_dir = self._ensure_live_log_initialized()
 
             record = {
                 "step": self.step_count,
@@ -359,20 +384,24 @@ class BaseOrchestrator(ABC, Generic[BaseAgentT, BaseUserT, TrajectoryItemT]):
         """
         self._run_start_time = get_now()
         self._run_start_perf = time.perf_counter()
-        self.initialize()
 
         finalized = False
         try:
+            self._ensure_live_log_initialized()
+            self.initialize()
             while not self.done:
                 self.step()
                 self._check_termination()
             result = self._finalize()
             finalized = True
             return result
+        except Exception as e:
+            self._append_live_error(e)
+            raise
         finally:
             if not finalized:
                 logger.warning(
-                    "Simulation loop exited with an exception — "
+                    "Simulation loop exited with an exception - "
                     "running emergency cleanup"
                 )
                 self._cleanup()

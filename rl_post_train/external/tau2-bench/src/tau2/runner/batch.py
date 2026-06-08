@@ -15,6 +15,7 @@ import multiprocessing
 import os
 import random
 import threading
+import traceback
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextvars import ContextVar
@@ -55,7 +56,7 @@ from tau2.user.user_simulator import (
 from tau2.user_simulation_voice_presets import COMPLEXITY_CONFIGS
 from tau2.utils.display import ConsoleDisplay, Text
 from tau2.utils.llm_utils import llm_log_mode, set_llm_log_dir, set_llm_log_mode
-from tau2.utils.utils import DATA_DIR
+from tau2.utils.utils import DATA_DIR, get_now
 
 # Context variable to track current simulation_id for log filtering
 # This ensures task-specific log handlers only receive their own messages
@@ -254,6 +255,76 @@ def save_simulation_audio(
 # =============================================================================
 
 
+def _write_live_infrastructure_error(
+    domain: str,
+    task: Task,
+    simulation_id: str,
+    seed: int,
+    error: BaseException,
+) -> None:
+    """Create a live artifact for failures before the orchestrator can log."""
+    try:
+        base_dir = Path(
+            os.getenv("TAU2_LIVE_CONVERSATION_LOG_DIR", DATA_DIR / "live_conversations")
+        )
+        task_id = str(getattr(task, "id", "unknown")).replace("/", "_")
+        log_dir = base_dir / f"{domain}_task_{task_id}_{simulation_id}"
+        log_dir.mkdir(parents=True, exist_ok=True)
+
+        metadata_path = log_dir / "metadata.json"
+        if not metadata_path.exists():
+            started_at = get_now()
+            metadata = {
+                "domain": domain,
+                "task_id": getattr(task, "id", None),
+                "simulation_id": simulation_id,
+                "seed": seed,
+                "batch_id": os.getenv("TAU2_LIVE_BATCH_ID"),
+                "started_at": started_at,
+            }
+            metadata_path.write_text(json.dumps(metadata, indent=2) + "\n")
+            (log_dir / "conversation.md").write_text(
+                f"# Live Conversation\n\n"
+                f"- domain: {domain}\n"
+                f"- task_id: {getattr(task, 'id', None)}\n"
+                f"- simulation_id: {simulation_id}\n\n"
+            )
+            (log_dir / "conversation.jsonl").write_text("")
+            (log_dir / "events.jsonl").write_text("")
+
+        events_path = log_dir / "events.jsonl"
+        if (
+            events_path.exists()
+            and '"event": "infrastructure_error"' in events_path.read_text()
+        ):
+            return
+
+        details = {
+            "error": str(error),
+            "error_type": type(error).__name__,
+            "traceback": traceback.format_exc(),
+        }
+        record = {
+            "step": None,
+            "timestamp": get_now(),
+            "event": "infrastructure_error",
+            "from_role": None,
+            "to_role": None,
+            "details": details,
+        }
+        with events_path.open("a") as f:
+            f.write(json.dumps(record, default=str) + "\n")
+        with (log_dir / "conversation.md").open("a") as f:
+            f.write(
+                "\n### INFRASTRUCTURE ERROR\n\n"
+                "```json\n"
+                f"{json.dumps(details, indent=2)}\n"
+                "```\n"
+            )
+    except Exception as live_error:
+        logger.warning(f"Failed to write live infrastructure error: {live_error}")
+
+
 class _TaskLogContext:
     """Manages per-task log files and LLM debug logging."""
 
@@ -384,68 +455,72 @@ def run_single_task(
         f"Agent: {config.effective_agent}, User: {config.effective_user}"
     )
 
-    with _TaskLogContext(simulation_id, save_dir, task, verbose_logs):
-        # Compute audio taps directory if enabled
-        taps_dir = None
-        if audio_taps and save_dir:
-            taps_dir = (
-                save_dir
-                / "artifacts"
-                / f"task_{task.id}"
-                / f"sim_{simulation_id}"
-                / "audio"
-                / "taps"
-            )
+    try:
+        with _TaskLogContext(simulation_id, save_dir, task, verbose_logs):
+            # Compute audio taps directory if enabled
+            taps_dir = None
+            if audio_taps and save_dir:
+                taps_dir = (
+                    save_dir
+                    / "artifacts"
+                    / f"task_{task.id}"
+                    / f"sim_{simulation_id}"
+                    / "audio"
+                    / "taps"
+                )
 
-        # Layer 2: Build the orchestrator
-        orchestrator = build_orchestrator(
-            config,
-            task,
-            seed=seed,
-            simulation_id=simulation_id,
-            user_voice_settings=user_voice_settings,
-            user_persona_config=user_persona_config,
-            hallucination_feedback=hallucination_feedback,
-            audio_taps_dir=taps_dir,
-        )
-
-        # Layer 1: Run the simulation
-        env_kwargs = _build_env_kwargs(config, task) or None
-        simulation = run_simulation(
-            orchestrator, evaluation_type=evaluation_type, env_kwargs=env_kwargs
-        )
-
-        # Side effects
-        if auto_review:
-            run_auto_review(
-                simulation=simulation,
-                task=task,
-                review_mode=review_mode,
-                user=config.effective_user,
-                llm_user=config.llm_user,
-                llm_args_user=config.llm_args_user,
-                user_persona_config=user_persona_config,
-                user_voice_settings=user_voice_settings,
-                policy=orchestrator.environment.get_policy(),
-                is_audio_native=is_voice,
-            )
-
-        if is_voice and save_dir:
-            save_simulation_audio(
-                simulation=simulation,
-                task=task,
+            # Layer 2: Build the orchestrator
+            orchestrator = build_orchestrator(
+                config,
+                task,
+                seed=seed,
                 simulation_id=simulation_id,
-                save_dir=save_dir,
-                audio_native_config=config.audio_native_config,
-                audio_debug=audio_debug,
+                user_voice_settings=user_voice_settings,
+                user_persona_config=user_persona_config,
+                hallucination_feedback=hallucination_feedback,
+                audio_taps_dir=taps_dir,
             )
 
-        logger.info(
-            f"FINISHED SIMULATION: Domain: {config.domain}, Task: {task.id}, "
-            f"Reward: {simulation.reward_info.reward if simulation.reward_info else 'N/A'}"
-        )
+            # Layer 1: Run the simulation
+            env_kwargs = _build_env_kwargs(config, task) or None
+            simulation = run_simulation(
+                orchestrator, evaluation_type=evaluation_type, env_kwargs=env_kwargs
+            )
 
-        return simulation
+            # Side effects
+            if auto_review:
+                run_auto_review(
+                    simulation=simulation,
+                    task=task,
+                    review_mode=review_mode,
+                    user=config.effective_user,
+                    llm_user=config.llm_user,
+                    llm_args_user=config.llm_args_user,
+                    user_persona_config=user_persona_config,
+                    user_voice_settings=user_voice_settings,
+                    policy=orchestrator.environment.get_policy(),
+                    is_audio_native=is_voice,
+                )
+
+            if is_voice and save_dir:
+                save_simulation_audio(
+                    simulation=simulation,
+                    task=task,
+                    simulation_id=simulation_id,
+                    save_dir=save_dir,
+                    audio_native_config=config.audio_native_config,
+                    audio_debug=audio_debug,
+                )
+
+            logger.info(
+                f"FINISHED SIMULATION: Domain: {config.domain}, Task: {task.id}, "
+                f"Reward: {simulation.reward_info.reward if simulation.reward_info else 'N/A'}"
+            )
+
+            return simulation
+    except Exception as e:
+        _write_live_infrastructure_error(config.domain, task, simulation_id, seed, e)
+        raise
 
 
 # =============================================================================
@@ -809,7 +884,7 @@ def run_tasks(
             simulation_results.simulations.append(result)
     except KeyboardInterrupt:
         ConsoleDisplay.console.print(
-            "\n[bold red]Ctrl+C received — cancelling remaining tasks...[/bold red]"
+            "\n[bold red]Ctrl+C received - cancelling remaining tasks...[/bold red]"
         )
         shutdown_event.set()
         executor.shutdown(wait=False, cancel_futures=True)

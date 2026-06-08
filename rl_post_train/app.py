@@ -283,8 +283,6 @@ HTML = r"""<!doctype html>
       text-align: center;
     }
 
-    .hidden { display: none; }
-
     @media (max-width: 760px) {
       .bar { grid-template-columns: auto 86px auto; }
       h1, .hint { grid-column: 1 / -1; }
@@ -379,7 +377,7 @@ HTML = r"""<!doctype html>
     async function init() {
       const data = await api("/api/list");
       state.items = data.conversations;
-      $("hint").textContent = `${state.items.length} conversations available, index 0-${Math.max(0, state.items.length - 1)}`;
+      $("hint").textContent = `${state.items.length} tasks available, index 0-${Math.max(0, state.items.length - 1)}`;
       if (state.items.length) loadIndex(0);
     }
 
@@ -522,37 +520,57 @@ def task_number(path: Path) -> int:
 def conversation_dirs() -> list[Path]:
     if not LIVE_DIR.exists():
         return []
-    paths = [p for p in LIVE_DIR.iterdir() if p.is_dir() and (p / "conversation.md").exists()]
+    paths = [
+        p for p in LIVE_DIR.iterdir()
+        if p.is_dir() and (p / "conversation.md").exists()
+    ]
     return sorted(paths, key=lambda p: (task_number(p), p.name))
 
 
-def result_files() -> list[Path]:
-    paths: list[Path] = []
-    if LIVE_LATEST_RESULTS.exists():
-        paths.append(LIVE_LATEST_RESULTS)
-    if LIVE_DIR.exists():
-        paths.extend(sorted(LIVE_DIR.glob("*-results.json"), key=lambda p: p.stat().st_mtime, reverse=True))
-    if not SIM_DIR.exists():
-        return paths
-    paths.extend(sorted(SIM_DIR.rglob("results*.json"), key=lambda p: p.stat().st_mtime, reverse=True))
+def live_dirs_by_simulation_id(batch_id: str | None = None) -> dict[str, Path]:
+    paths: dict[str, Path] = {}
+    for path in conversation_dirs():
+        metadata = read_json(path / "metadata.json")
+        if batch_id is not None and metadata.get("batch_id") != batch_id:
+            continue
+        simulation_id = metadata.get("simulation_id")
+        if simulation_id:
+            paths[simulation_id] = path
     return paths
 
 
-@functools.cache
-def latest_results() -> tuple[Path | None, list[dict[str, Any]]]:
-    live_ids = set()
-    live_task_ids = set()
-    for metadata_path in LIVE_DIR.glob("*/metadata.json"):
-        metadata = read_json(metadata_path)
-        simulation_id = metadata.get("simulation_id")
-        if simulation_id:
-            live_ids.add(simulation_id)
+def live_dirs_by_task_id(batch_id: str | None = None) -> dict[str, Path]:
+    paths: dict[str, Path] = {}
+    for path in conversation_dirs():
+        metadata = read_json(path / "metadata.json")
+        if batch_id is not None and metadata.get("batch_id") != batch_id:
+            continue
         task_id = metadata.get("task_id")
+        if task_id is None:
+            parsed = task_number(path)
+            task_id = parsed if parsed != 999999 else None
         if task_id is not None:
-            live_task_ids.add(str(task_id))
+            current = paths.get(str(task_id))
+            if current is None or path.stat().st_mtime > current.stat().st_mtime:
+                paths[str(task_id)] = path
+    return paths
 
-    best: tuple[tuple[int, int, float], Path, list[dict[str, Any]]] | None = None
-    for path in result_files():
+
+def result_candidates() -> list[Path]:
+    if LIVE_LATEST_RESULTS.exists():
+        return [LIVE_LATEST_RESULTS]
+    if not SIM_DIR.exists():
+        return []
+    return sorted(
+        SIM_DIR.rglob("results.json"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+
+
+@functools.cache
+def latest_results() -> tuple[Path | None, list[dict[str, Any]], str | None]:
+    for path in result_candidates():
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
@@ -561,17 +579,9 @@ def latest_results() -> tuple[Path | None, list[dict[str, Any]]]:
         if not isinstance(simulations, list):
             continue
         rows = [sim for sim in simulations if isinstance(sim, dict)]
-        overlap = sum(1 for sim in rows if sim.get("id") in live_ids)
-        result_task_ids = {str(sim.get("task_id")) for sim in rows if sim.get("task_id") is not None}
-        covers_live_tasks = bool(live_task_ids) and live_task_ids.issubset(result_task_ids)
-        if overlap == 0 and not covers_live_tasks:
-            continue
-        score = (overlap, int(covers_live_tasks), len(rows), path.stat().st_mtime)
-        if best is None or score > best[0]:
-            best = (score, path, rows)
-    if best is not None:
-        return best[1], best[2]
-    return None, []
+        batch_id = data.get("_tau2_live_batch_id") if isinstance(data, dict) else None
+        return path, rows, batch_id
+    return None, [], None
 
 
 def outcome_from_result(result: dict[str, Any] | None, fallback_reason: str = "") -> dict[str, str]:
@@ -585,7 +595,11 @@ def outcome_from_result(result: dict[str, Any] | None, fallback_reason: str = ""
     reward_info = result.get("reward_info") or {}
     reward = reward_info.get("reward")
     termination = result.get("termination_reason")
-    failed_by_infra = termination in {"infrastructure_error", "agent_error", "environment_error"}
+    failed_by_infra = termination in {
+        "infrastructure_error",
+        "agent_error",
+        "environment_error",
+    }
     success = reward == 1.0 and not failed_by_infra
     label = "Success" if success else "Failed"
     if isinstance(reward, (int, float)):
@@ -593,41 +607,63 @@ def outcome_from_result(result: dict[str, Any] | None, fallback_reason: str = ""
     return {
         "outcome": "success" if success else "failed",
         "outcome_label": label,
-        "outcome_source": result.get("_results_path", "results.json"),
+        "outcome_source": "results.json",
     }
 
 
-def find_outcome(task_id: Any, simulation_id: Any) -> dict[str, str]:
-    results_path, results = latest_results()
-    if results_path is None:
-        return outcome_from_result(
-            None,
-            "No local data/simulations/results*.json covers all live conversation tasks",
-        )
-
-    source = str(results_path.relative_to(ROOT))
-    if simulation_id:
-        for result in results:
-            if result.get("id") == simulation_id:
-                outcome = outcome_from_result(result)
-                outcome["outcome_source"] = source
-                return outcome
-
-    matches = [result for result in results if str(result.get("task_id")) == str(task_id)]
-    if matches:
-        outcome = outcome_from_result(matches[0])
-        outcome["outcome_source"] = source
-        return outcome
-
-    return outcome_from_result(None, f"Task not found in latest results: {source}")
+def result_sort_key(result: dict[str, Any]) -> tuple[int, str]:
+    task_id = result.get("task_id")
+    try:
+        return int(task_id), str(result.get("id") or "")
+    except (TypeError, ValueError):
+        return 999999, str(result.get("id") or "")
 
 
-def summarize(path: Path, index: int) -> dict[str, Any]:
-    metadata = read_json(path / "metadata.json")
-    messages = read_jsonl(path / "conversation.jsonl")
-    events = read_jsonl(path / "events.jsonl")
+def latest_batch_entries() -> list[dict[str, Any]]:
+    results_path, results, batch_id = latest_results()
+    if results:
+        live_by_id = live_dirs_by_simulation_id(batch_id)
+        live_by_task = live_dirs_by_task_id(batch_id) if batch_id is not None else {}
+        entries = []
+        for result in sorted(results, key=result_sort_key):
+            live_path = live_by_id.get(result.get("id"))
+            if (
+                live_path is None
+                and batch_id is not None
+                and result.get("task_id") is not None
+            ):
+                live_path = live_by_task.get(str(result.get("task_id")))
+            entries.append(
+                {
+                    "result": result,
+                    "result_source": (
+                        str(results_path.relative_to(ROOT))
+                        if results_path
+                        else "results.json"
+                    ),
+                    "path": live_path,
+                }
+            )
+        return entries
+
+    return [
+        {"path": path, "result": None, "result_source": None}
+        for path in conversation_dirs()
+    ]
+
+
+def summarize_entry(entry: dict[str, Any], index: int) -> dict[str, Any]:
+    path = entry.get("path")
+    result = entry.get("result")
+    result_source = entry.get("result_source")
+    metadata = read_json(path / "metadata.json") if path else {}
+    messages = read_jsonl(path / "conversation.jsonl") if path else []
+    events = read_jsonl(path / "events.jsonl") if path else []
     timestamps = [metadata.get("started_at")]
-    timestamps += [m.get("timestamp") or m.get("message", {}).get("timestamp") for m in messages]
+    timestamps += [
+        m.get("timestamp") or m.get("message", {}).get("timestamp")
+        for m in messages
+    ]
     timestamps += [e.get("timestamp") for e in events]
     timestamps = [t for t in timestamps if t]
     started = metadata.get("started_at") or (min(timestamps) if timestamps else None)
@@ -638,33 +674,80 @@ def summarize(path: Path, index: int) -> dict[str, Any]:
         if isinstance(m.get("message"), dict)
     )
     task_id = metadata.get("task_id")
+    simulation_id = metadata.get("simulation_id")
+    if result:
+        task_id = result.get("task_id")
+        simulation_id = result.get("id")
     if task_id is None:
-        task_id = str(task_number(path)) if task_number(path) != 999999 else "-"
-    outcome = find_outcome(task_id, metadata.get("simulation_id"))
+        task_id = str(task_number(path)) if path and task_number(path) != 999999 else "-"
+    if result:
+        outcome = outcome_from_result(result)
+        outcome["outcome_source"] = result_source or "results.json"
+    else:
+        outcome = outcome_from_result(None, "No latest results file found")
     return {
         "index": index,
-        "name": path.name,
+        "name": path.name if path else f"airline_task_{task_id}_{simulation_id}",
         "task_id": task_id,
-        "simulation_id": metadata.get("simulation_id"),
+        "simulation_id": simulation_id,
         **outcome,
         "started_at": started,
         "updated_at": updated,
-        "duration_seconds": elapsed(started, updated),
+        "duration_seconds": (
+            result.get("duration")
+            if result and result.get("duration") is not None
+            else elapsed(started, updated)
+        ),
         "message_count": len(messages),
         "tool_call_count": tool_count,
+        "has_conversation": path is not None,
     }
 
 
 def payload_for(index: int) -> dict[str, Any]:
-    paths = conversation_dirs()
-    if index < 0 or index >= len(paths):
+    entries = latest_batch_entries()
+    if index < 0 or index >= len(entries):
         raise IndexError(index)
-    path = paths[index]
+    entry = entries[index]
+    path = entry.get("path")
+    messages = read_jsonl(path / "conversation.jsonl") if path else []
+    events = read_jsonl(path / "events.jsonl") if path else []
+    if not messages:
+        summary = summarize_entry(entry, index)
+        infra_events = [
+            event for event in events
+            if event.get("event") == "infrastructure_error"
+        ]
+        if infra_events:
+            details = infra_events[-1].get("details") or {}
+            content = "\n".join(
+                part
+                for part in [
+                    "Infrastructure error recorded before a full transcript was available.",
+                    details.get("error_type"),
+                    details.get("error"),
+                ]
+                if part
+            )
+        else:
+            content = (
+                "No live conversation transcript was saved for this simulation. "
+                f"Outcome is available from {summary.get('outcome_source')}."
+            )
+        messages = [
+            {
+                "step": 0,
+                "timestamp": summary.get("started_at"),
+                "message": {
+                    "role": "tool",
+                    "content": content,
+                },
+            }
+        ]
     return {
-        "summary": summarize(path, index),
-        "metadata": read_json(path / "metadata.json"),
-        "messages": read_jsonl(path / "conversation.jsonl"),
-        "markdown": (path / "conversation.md").read_text(encoding="utf-8"),
+        "summary": summarize_entry(entry, index),
+        "metadata": read_json(path / "metadata.json") if path else {},
+        "messages": messages,
     }
 
 
@@ -674,8 +757,13 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/":
             return self.send_html(HTML)
         if path == "/api/list":
-            paths = conversation_dirs()
-            return self.send_json({"conversations": [summarize(p, i) for i, p in enumerate(paths)]})
+            entries = latest_batch_entries()
+            return self.send_json({
+                "conversations": [
+                    summarize_entry(entry, i)
+                    for i, entry in enumerate(entries)
+                ]
+            })
         if path.startswith("/api/conversation/"):
             try:
                 index = int(path.rsplit("/", 1)[-1])

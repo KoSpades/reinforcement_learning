@@ -71,6 +71,7 @@ MAX_CONCURRENCY="${MAX_CONCURRENCY:-8}"
 AGENT_TIMEOUT="${AGENT_TIMEOUT:-120}"
 AGENT_NUM_RETRIES="${AGENT_NUM_RETRIES:-0}"
 PUSH_RESULTS="${PUSH_RESULTS:-0}"
+CLEAR_LIVE_CONVERSATIONS="${CLEAR_LIVE_CONVERSATIONS:-1}"
 RUN_TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 RESULT_DIRS=()
 RESULT_FILES=()
@@ -118,6 +119,7 @@ Environment:
   AGENT_TIMEOUT       Timeout in seconds for local agent calls. Default: 120.
   AGENT_NUM_RETRIES   LiteLLM retry count for local agent calls. Default: 0.
   PUSH_RESULTS        Commit and push generated results. Default: 0.
+  CLEAR_LIVE_CONVERSATIONS Clear old live conversation files before running. Default: 1.
 EOF
 }
 
@@ -242,13 +244,17 @@ else
   VLLM_HEALTH_URL="${VLLM_API_BASE%/v1}/health"
   if ! curl -fsS "${VLLM_HEALTH_URL}" >/dev/null 2>&1; then
     VLLM_CMD=(
-      uv run vllm serve "${VLLM_MODEL}"
-      --served-model-name "${VLLM_SERVED_MODEL}" \
-      --host "${VLLM_HOST}" \
-      --port "${VLLM_PORT}" \
-      --gpu-memory-utilization "${VLLM_GPU_MEMORY_UTILIZATION}" \
-      --max-model-len "${VLLM_MAX_MODEL_LEN}" \
-      --enable-auto-tool-choice \
+      uv
+      run
+      vllm
+      serve
+      "${VLLM_MODEL}"
+      --served-model-name "${VLLM_SERVED_MODEL}"
+      --host "${VLLM_HOST}"
+      --port "${VLLM_PORT}"
+      --gpu-memory-utilization "${VLLM_GPU_MEMORY_UTILIZATION}"
+      --max-model-len "${VLLM_MAX_MODEL_LEN}"
+      --enable-auto-tool-choice
       --tool-call-parser "${VLLM_TOOL_CALL_PARSER}"
     )
     if [[ -n "${VLLM_EXTRA_ARGS}" ]]; then
@@ -344,8 +350,16 @@ print(message.tool_calls[0].function.name)
 PY
 
 echo "==> Running tau2 airline"
+LIVE_RESULTS_DIR="${TAU2_DIR}/data/live_conversations"
+mkdir -p "${LIVE_RESULTS_DIR}"
+if [[ "${CLEAR_LIVE_CONVERSATIONS}" == "1" ]]; then
+  echo "==> Clearing old live conversations"
+  find "${LIVE_RESULTS_DIR}" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+fi
+
 for run_idx in $(seq 1 "${RUNS}"); do
   SAVE_TO="${SAVE_PREFIX}-run-${run_idx}"
+  export TAU2_LIVE_BATCH_ID="${SAVE_TO}"
   echo "==> Run ${run_idx}/${RUNS}; save_to=${SAVE_TO}"
 
   RUN_ARGS=(
@@ -372,18 +386,30 @@ for run_idx in $(seq 1 "${RUNS}"); do
     exit 1
   fi
 
-  LIVE_RESULTS_DIR="${TAU2_DIR}/data/live_conversations"
-  mkdir -p "${LIVE_RESULTS_DIR}"
   RUN_RESULT_COPY="${LIVE_RESULTS_DIR}/${SAVE_TO}-results.json"
   LATEST_RESULT_COPY="${LIVE_RESULTS_DIR}/latest_results.json"
-  cp "${RESULT_FILE}" "${RUN_RESULT_COPY}"
-  cp "${RESULT_FILE}" "${LATEST_RESULT_COPY}"
+  python - "${RESULT_FILE}" "${RUN_RESULT_COPY}" "${SAVE_TO}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+source = Path(sys.argv[1])
+dest = Path(sys.argv[2])
+batch_id = sys.argv[3]
+
+data = json.loads(source.read_text())
+data["_tau2_live_batch_id"] = batch_id
+data["_tau2_save_to"] = batch_id
+dest.write_text(json.dumps(data, indent=2) + "\n")
+PY
+  cp "${RUN_RESULT_COPY}" "${LATEST_RESULT_COPY}"
 
   echo "Results: ${RESULT_DIR}"
   echo "Latest results copy: ${LATEST_RESULT_COPY}"
   RESULT_DIRS+=("${RESULT_DIR}")
   RESULT_FILES+=("${RUN_RESULT_COPY}" "${LATEST_RESULT_COPY}")
 done
+unset TAU2_LIVE_BATCH_ID
 
 echo "==> Done"
 echo "All results are under: ${TAU2_DIR}/data/simulations/${SAVE_PREFIX}-run-*"
