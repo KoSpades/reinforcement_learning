@@ -73,6 +73,7 @@ AGENT_NUM_RETRIES="${AGENT_NUM_RETRIES:-0}"
 PUSH_RESULTS="${PUSH_RESULTS:-0}"
 RUN_TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 RESULT_DIRS=()
+RESULT_FILES=()
 
 case "${AGENT_BACKEND}" in
   vllm)
@@ -116,7 +117,7 @@ Environment:
   MAX_CONCURRENCY     Default: 8.
   AGENT_TIMEOUT       Timeout in seconds for local agent calls. Default: 120.
   AGENT_NUM_RETRIES   LiteLLM retry count for local agent calls. Default: 0.
-  PUSH_RESULTS        Commit and push generated results. Default: 0 unless GITHUB_TOKEN is set.
+  PUSH_RESULTS        Commit and push generated results. Default: 0.
 EOF
 }
 
@@ -364,14 +365,30 @@ for run_idx in $(seq 1 "${RUNS}"); do
   fi
 
   "${RUN_ARGS[@]}"
-  echo "Results: ${TAU2_DIR}/data/simulations/${SAVE_TO}"
-  RESULT_DIRS+=("${TAU2_DIR}/data/simulations/${SAVE_TO}")
+  RESULT_DIR="${TAU2_DIR}/data/simulations/${SAVE_TO}"
+  RESULT_FILE="${RESULT_DIR}/results.json"
+  if [[ ! -f "${RESULT_FILE}" ]]; then
+    echo "ERROR: Expected results file was not created: ${RESULT_FILE}" >&2
+    exit 1
+  fi
+
+  LIVE_RESULTS_DIR="${TAU2_DIR}/data/live_conversations"
+  mkdir -p "${LIVE_RESULTS_DIR}"
+  RUN_RESULT_COPY="${LIVE_RESULTS_DIR}/${SAVE_TO}-results.json"
+  LATEST_RESULT_COPY="${LIVE_RESULTS_DIR}/latest_results.json"
+  cp "${RESULT_FILE}" "${RUN_RESULT_COPY}"
+  cp "${RESULT_FILE}" "${LATEST_RESULT_COPY}"
+
+  echo "Results: ${RESULT_DIR}"
+  echo "Latest results copy: ${LATEST_RESULT_COPY}"
+  RESULT_DIRS+=("${RESULT_DIR}")
+  RESULT_FILES+=("${RUN_RESULT_COPY}" "${LATEST_RESULT_COPY}")
 done
 
 echo "==> Done"
 echo "All results are under: ${TAU2_DIR}/data/simulations/${SAVE_PREFIX}-run-*"
 
-if [[ "${PUSH_RESULTS}" == "1" || -n "${GITHUB_TOKEN:-}" ]]; then
+if [[ "${PUSH_RESULTS}" == "1" ]]; then
   echo "==> Committing and pushing results"
   cd "${REPO_DIR}"
 
@@ -389,8 +406,12 @@ if [[ "${PUSH_RESULTS}" == "1" || -n "${GITHUB_TOKEN:-}" ]]; then
   git config user.email "${GIT_AUTHOR_EMAIL:-colab-tau2-runner@example.com}"
 
   for result_dir in "${RESULT_DIRS[@]}"; do
-    git add -f "${result_dir}"
+    git add "${result_dir}"
   done
+  for result_file in "${RESULT_FILES[@]}"; do
+    git add "${result_file}"
+  done
+  git add "${TAU2_DIR}/data/live_conversations"
 
   if git diff --cached --quiet; then
     echo "No result changes to commit."
@@ -399,5 +420,5 @@ if [[ "${PUSH_RESULTS}" == "1" || -n "${GITHUB_TOKEN:-}" ]]; then
     git push origin HEAD
   fi
 else
-  echo "==> Skipping git push because no GITHUB_TOKEN was provided"
+  echo "==> Skipping git push because PUSH_RESULTS is not 1"
 fi
