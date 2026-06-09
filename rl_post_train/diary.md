@@ -281,3 +281,7 @@ At its core, the default agent is very dumb: paste all policies, paste all conve
 ## 06/06/26
 
 Lots of code cleaning, and started a UI to inspect the actual converstaions. Right now it displays all the back and forth conversation between agent and user. We will think of adding new things to make it more information (e.g. displaying why the task failed; or the expected DB state, etc.)
+
+A NL description of what's expected from tasks: external/tau2-bench/data/tau2/domains/airline/tasks.json.
+
+How is the DB reward actually calculated: for each task, compare db.json after applying the actions in tasks.json's evaluateion_criteria.actions. Then compare that against the DB produced by agent. If the final DB state match, the DB reward is 1.
