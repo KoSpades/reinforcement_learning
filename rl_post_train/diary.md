@@ -286,7 +286,7 @@ A NL description of what's expected from tasks: external/tau2-bench/data/tau2/do
 
 How is the DB reward actually calculated: for each task, compare db.json after applying the actions in tasks.json's evaluateion_criteria.actions. Then compare that against the DB produced by agent. If the final DB state match, the DB reward is 1.
 
-## 06/09/26
+## 06/10/26
 
 Things to try:
 - Implement a better agent. (and many things to try here, including the LLM for RL, and AI factory). I am actually excited to try the latter.
