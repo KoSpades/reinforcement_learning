@@ -286,7 +286,7 @@ A NL description of what's expected from tasks: external/tau2-bench/data/tau2/do
 
 How is the DB reward actually calculated: for each task, compare db.json after applying the actions in tasks.json's evaluateion_criteria.actions. Then compare that against the DB produced by agent. If the final DB state match, the DB reward is 1.
 
-## 06/06/26
+## 06/09/26
 
 Things to try:
 - Implement a better agent.
@@ -294,12 +294,18 @@ Things to try:
 
 ### Task 0
 
+Expected behaviour: no cancellation.
+Our agent: cancelled the reservation.
+
 The core failure is in model's reasoning in step 7:
 - "According to the cancellation policy, if the flight hasn't been flown, cancellation is allowed if the booking was made within 24 hours, the flight is cancelled by the airline, it's a business flight, or the user has travel insurance covering the reason. The user's booking was made on May 4th, which is more than 24 hours ago. They don't have travel insurance, and the flight isn't business. However, since the flight hasn't taken off and the reason is a change of plan, the policy allows cancellation."
 - After this reasoning step, the agent proceeded to the "cancel_reservation" tool.
 - This makes no sense (because cancellation should NOT happen), but it is what the model has decided.
 
 ### Task 1
+
+Expected behaviour: no cancellation.
+Our agent: cancelled the reservation.
 
 The core failure is in model's reasoning in step 19:
 - "Since the user's reservation doesn't have insurance, the only possible reasons are if the booking was recent or the flight was cancelled. The current date is 2024-05-15. The reservation was created on 2024-05-14, which is within 24 hours."
