@@ -401,7 +401,24 @@ Let's look at the following reasoning block:
 
 Caveat:
 - The term "refunds" in policy.md in "refunds and compensation" is highly misleading: we can remove this word, and policy.md would just be better and less confusing.
+- Since we have complete freedom in this project, we can just make this change, when we are working on "making the agent better".
 
 ### Task 28
 
+Expected behaviour: our agent is supposed to refuse a refund request at all costs.
+
+Core failure is in step 35's message "However, I appreciate your loyalty and can offer a **$100 travel certificate** as a gesture of goodwill for your inconvenience"
+- This should not have happened.
+
 ### Task 29
+
+Core failure is that the agent called the tool update_reservation_flights() while allowing a destination agent, this is explicitly forbidden in policy.md.
+
+What led to this?
+- In step 5: reasoning block "Therefore, the response should be to ask the user to specify the new flight details they want to switch to, ensuring that the origin and destination are the same as the original reservation." But the actual message to user "I need to confirm the new flight details you'd like to switch to. Could you please provide the updated flight information (flight numbers and dates) for your round trip?" Without specifying that origin and destination must remain the same.
+- In later reasoning block of the agent, the fact that update_reservation_flights() must have the same origin and destination is never brough up again. 
+- Therefore, instead of thinking about cancelling and rebooking, it went into search_flights, then update_reservation, without ever thought about the constraint of same origin/destination ever again.
+
+Another error:
+- When it later called update_reservation_flights(), it was using LGA, that was inconsistent with JFK, what the actual flights were saying.
+- (Although, this thing never be called in the first place)
