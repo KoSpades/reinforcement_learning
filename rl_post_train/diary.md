@@ -280,7 +280,7 @@ At its core, the default agent is very dumb: paste all policies, paste all conve
 
 ## 06/06/26
 
-Lots of code cleaning, and started a UI to inspect the actual converstaions. Right now it displays all the back and forth conversation between agent and user. We will think of adding new things to make it more information (e.g. displaying why the task failed; or the expected DB state, etc.)
+Lots of code cleaning, and started a UI to inspect the actual converstaions. Right now it displays all the back and forth conversation between agent and user. We will think of adding new things to make it more informative (e.g. displaying why the task failed; or the expected DB state, etc.)
 
 A NL description of what's expected from tasks: external/tau2-bench/data/tau2/domains/airline/tasks.json.
 
@@ -291,6 +291,8 @@ How is the DB reward actually calculated: for each task, compare db.json after a
 Things to try:
 - Implement a better agent.
 - Implement an evaluator to automatically locate area of failure (what we would manually be doing for task 0 to task 9)
+
+We will inspect all failed tasks in the first 20 (excluding timeouts) and study their failure modes. Then study how we can deal with them.
 
 ### Task 0
 
@@ -310,3 +312,24 @@ Our agent: cancelled the reservation.
 The core failure is in model's reasoning in step 19:
 - "Since the user's reservation doesn't have insurance, the only possible reasons are if the booking was recent or the flight was cancelled. The current date is 2024-05-15. The reservation was created on 2024-05-14, which is within 24 hours."
 - Yet, this is wrong, the policy has specified that "The current time is 2024-05-15 15:00:00 EST.", and the get_reservation_detail() tool call in step 15 and 16 has shown that the reservation was created at "2024-05-14T09:52:38".
+
+### Task 5
+
+Expected behaviour: no compensation for the user. The user claims to be a Gold member, but they are only regular.
+Out agent: compensated the user.
+
+The core failure occurred as early as step 1: the agent believed that the user is a Gold member, without verifying the membership status of the user ever. In fact, throughout the conversation, the user details is never verified.
+
+### Task 12 
+
+There are many errors in this one made by the agents. There are two important ones:
+- It incorrectly calculated the upgrade costs, which should be $1200 rather than $849.
+- Even though in its reasoning it figured out that upgrading only one passenger isn't allowed, it still called the upgrade tool anyway.
+
+The correct behaviour is follows:
+1. Read reservation YAX4DR
+2. Search business prices for both legs
+3. Calculate full upgrade fee: 2 * ((350 - 122) + (499 - 127)) = 1200
+4. Since $1200 > user’s $650 limit, do not upgrade
+5. When user asks to upgrade only Noah, refuse because cabin must be same for all passengers
+6. Add 2 checked bags for free: update_reservation_baggages(YAX4DR, total_baggages=2, nonfree_baggages=0, payment_id=credit_card_4938634)
