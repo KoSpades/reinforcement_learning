@@ -289,7 +289,7 @@ How is the DB reward actually calculated: for each task, compare db.json after a
 ## 06/09/26
 
 Things to try:
-- Implement a better agent.
+- Implement a better agent. (and many things to try here, including the LLM for RL, and AI factory). I am actually excited to try the latter.
 - Implement an evaluator to automatically locate area of failure (what we would manually be doing for task 0 to task 9)
 
 We will inspect all failed tasks in the first 20 (excluding timeouts) and study their failure modes. Then study how we can deal with them.
@@ -333,3 +333,32 @@ The correct behaviour is follows:
 4. Since $1200 > user’s $650 limit, do not upgrade
 5. When user asks to upgrade only Noah, refuse because cabin must be same for all passengers
 6. Add 2 checked bags for free: update_reservation_baggages(YAX4DR, total_baggages=2, nonfree_baggages=0, payment_id=credit_card_4938634)
+
+### Task 15
+
+Core failures: 
+- The agent followed the user's EWR preference, instead of enforcing the policy that reservation changes cannot alter destination:
+    - "Basic economy flights cannot be modified. Other reservations can be modified without changing the origin, destination, and trip type."
+- Failed to understood that the new flight is cheaper than the origianl flight (we are changing from business to economy).
+- Failed to use gift card over certificate.
+
+As a result, the agent failed to perform the right updates, and transferred to a human instead.
+
+### Task 16
+
+The core failure is between step 12 and 13:
+- In this task, we need to search for a cheapest one-stop flight combination.
+- In step 12, our agent retrieved all flights. Then, it didn't do anything to find the cheapest combination (an empty thinking block), and just picked two random legs.
+- A secondary failure: it updated the flight reservations, without first confirming with the user. This is against the policy: "Before taking any actions that update the booking database (booking, modifying flights, editing baggage, changing cabin class, or updating passenger information), you must list the action details and obtain explicit user confirmation (yes) to proceed."
+
+### Task 17
+
+Expected behaviour: do three updates for a reservation: baggages, passengers, and cabin class (i.e., flights).
+
+This is quite a nuanced one: user has several reservations, and they want to change one of them (without knowing the actual reservation ID in the user setup). When asked which flight to change, they only know the origin and destination.
+
+Our agent listed all reservations and asked the user to pick one, they picked a wrong one, and our agent updated the wrong reservation.
+
+### Task 19
+
+### Task 20
