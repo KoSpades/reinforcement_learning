@@ -373,7 +373,18 @@ The core failure is in the following reasoning block:
 
 ### Task 21
 
+The core failure is in the following reasoning block:
+- "So, first, the agent needs to call update_reservation_flights with the new flights, cabin class (economy), and payment method."
+- The key error is in "new flights": in the documentation, it was made explicit that update_reservation_flights() must included all the flights, and the agent's thinking block never considered this.
+
 ### Task 23
+
+There are many important failures here: the agents made a 10-step tool calling/reasoning chain without ever interacting with the user. So it made many mistakes:
+- Ignored the policy that basic ecnomoy cannot be updated directly. (and called update_reservation_flights() on it).
+- Picked the wrong flight (not the cheapest one), after getting the results from update_reservation_flights(). This is a recurring problem from before.
+- Ignored the policy of one-certificate-per-reservation.
+- Calculated a total amount for one passenger, not for three. 
+- Claimed to user that it has made a payment change, without doing any DB modification. 
 
 ### Task 24
 
