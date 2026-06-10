@@ -388,6 +388,9 @@ There are many important failures here: the agents made a 10-step tool calling/r
 
 ### Task 24
 
+- The core failure is that the agent performed the transfer_to_agent() too early, which in most tasks is equal to a failure.
+- In here, the agent did successfully realize that cancellation is not possible. Yet, because it did a "early termination", instead of relaying this information back to the user and ask if the user have any other requests, it didn't even get to see the users' other requests. (i.e. continue with the independent booking request).
+
 ### Task 26
 
 ### Task 28
