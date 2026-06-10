@@ -361,4 +361,24 @@ Our agent listed all reservations and asked the user to pick one, they picked a 
 
 ### Task 19
 
+Another interesting one. In here, the agent correctly identified the basic economy cannot be modified.
+The expected behaviour is for agent to ask the user "This basic economy reservation cannot be modified. I can help check whether cancellation is available, or transfer you to a human agent. Which option would you prefer?" Yet, our agent transferred to a human agent directly, which is treated as a failure for this task.
+
 ### Task 20
+
+The agent called the book_reservation() tool too early, without confirming with user all the details (in this case, the payment methods), and guessed what payment methods the users want to use.
+
+The core failure is in the following reasoning block:
+- "Since they didn't mention insurance, I set it to 'no'. Payment-wise, they have credit cards and certificates, but the user didn't specify, so I used the first credit card (credit_card_1955700) for the total amount of $255."
+
+### Task 21
+
+### Task 23
+
+### Task 24
+
+### Task 26
+
+### Task 28
+
+### Task 29
