@@ -393,6 +393,15 @@ There are many important failures here: the agents made a 10-step tool calling/r
 
 ### Task 26
 
+Core failure is in the reasoning block in step 11: the agent did not check all the conditions carefully for cancellation.  
+
+Let's look at the following reasoning block:
+- "The policy allows cancellation if the booking was made within 24 hours, the flight is cancelled by the airline, it's a business flight, or the user has travel insurance covering the reason. The user doesn't mention travel insurance, but since they are a gold member, maybe they have some benefits. However, the policy states that refunds are processed within 5-7 business days. The user is a gold member, so according to the refund rules, they should be eligible for a refund."
+- There's no careful validation of all cancellation rules; we made up stuff ("maybe they have some benefits"); and the agent didn't corrrectly understand that only upon successful cancellation is a refund possible. (Although, this isn't made explicit in policy.md).
+
+Caveat:
+- The term "refunds" in policy.md in "refunds and compensation" is highly misleading: we can remove this word, and policy.md would just be better and less confusing.
+
 ### Task 28
 
 ### Task 29
