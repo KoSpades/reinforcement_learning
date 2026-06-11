@@ -286,7 +286,7 @@ A NL description of what's expected from tasks: external/tau2-bench/data/tau2/do
 
 How is the DB reward actually calculated: for each task, compare db.json after applying the actions in tasks.json's evaluateion_criteria.actions. Then compare that against the DB produced by agent. If the final DB state match, the DB reward is 1.
 
-## 06/10/26
+## 06/11/26
 
 Things to try:
 - Implement a better agent. (and many things to try here, including the LLM for RL, and AI factory). I am actually excited to try the latter.
@@ -422,3 +422,41 @@ What led to this?
 Another error:
 - When it later called update_reservation_flights(), it was using LGA, that was inconsistent with JFK, what the actual flights were saying.
 - (Although, this thing never be called in the first place)
+
+### Task 32
+
+The core failure is in step 9's reasoning block:
+- "Wait, the policy says basic economy flights cannot be modified. So if the user wants a nonstop flight, they might need to cancel the current reservation and book a new one. But the user might prefer to modify the existing reservation if possible."
+- The agent correctly realized that basic economy flights cannot be modified, but without any further thinking or message to the user, it called search_direct_flights() and update_reservation_flights() right after, violating existing policy.
+
+### Task 34
+
+Expected behaviour:
+- Inspect reservation
+- Search possible new flights
+- Calculate package cost, and tell user it exceeds $200.
+- Since the user does not accept partial changes, make no DB changes.
+
+The core failue of our agent is in step 11: once again, it called update_reservation_flight too eagerly, this is a recurring error. Here is our agent's trajectory:
+- update_reservation_flights() right after search_direct_flights()
+- Tried to call update_reservation_baggages() with certificates (but failed)
+- Calculated the amount, then told user it was too expensive.
+- Instead of cancelling the user' request (i.e., do nothing), cancelled the user's flights instead.
+- Incorrectly sent out an $100 compensation.
+
+### Task 38
+
+First important failure:
+- In agent's reasoning block: "The policy says that for delayed flights, if the user wants to change or cancel and the delay is covered, a certificate can be offered. The amount is $50 per passenger. The user's reservation has one passenger, Noah Muller. So, the compensation should be $50 multiplied by the number of passengers, which is 1. That's $50. I need to confirm the facts again: the flight was delayed, the user has insurance, and they are a gold member. All conditions are met."
+- It completely ignored the policy that only when user wants to change or cancel can the compensation be offered.
+
+Second important failure:
+- The agent did not try to verify the number of passengers before sending the certificate. (It did so after sending the certificate)
+
+### Task 39
+
+The core failure occured so early in the reasoning block in step 1, that we didn't even really get to do the task.
+- "Therefore, I should inform the user that I need their user_id to proceed. But the user might not know their user_id. In that case, I need to ask them to check their account or provide any other details that can help retrieve the user_id. However, according to the policy, if the request can't be handled with the available tools, I should transfer to a human agent."
+- Even though in part of the reasoning the agent realized that they should try to ask the user about the user_id, they eventually did not ask, and just called transfer_to_human(), which results in a failure.
+
+This really gives us a sufficient set of task diagnosis. Let's now get started on fixing them. Many things to try including RL, SFT, or a better agent impl. We should test out them all.
