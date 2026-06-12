@@ -412,7 +412,7 @@ Core failure is in step 35's message "However, I appreciate your loyalty and can
 
 ### Task 29
 
-Core failure is that the agent called the tool update_reservation_flights() while allowing a destination agent, this is explicitly forbidden in policy.md.
+Core failure is that the agent called the tool update_reservation_flights() while allowing a destination change, this is explicitly forbidden in policy.md.
 
 What led to this?
 - In step 5: reasoning block "Therefore, the response should be to ask the user to specify the new flight details they want to switch to, ensuring that the origin and destination are the same as the original reservation." But the actual message to user "I need to confirm the new flight details you'd like to switch to. Could you please provide the updated flight information (flight numbers and dates) for your round trip?" Without specifying that origin and destination must remain the same.
@@ -460,6 +460,24 @@ The core failure occured so early in the reasoning block in step 1, that we didn
 - Even though in part of the reasoning the agent realized that they should try to ask the user about the user_id, they eventually did not ask, and just called transfer_to_human(), which results in a failure.
 
 This really gives us a sufficient set of task diagnosis. Let's now get started on fixing them. Many things to try including RL, SFT, or a better agent impl. We should test out them all.
+
+### Task 42
+
+### Task 43
+
+### Task 44
+
+### Task 45
+
+Core failure: entirely wrong reasoning block and missing available tools.
+- In agent's reasoning in step 3: "But the agent can't check the insurance status without the user providing it. So the agent should proceed with the cancellation"
+- This is straight up wrong, because this is what get_reservation_details is for.
+
+### Task 47
+
+Core failure: did not understand that insurance only covers full refund for health/weather reasons, described in policy.md ln 99. In step 7's reasoning block, agent thinkks:
+- "The user has travel insurance, which covers "change of plan" reasons. The policy mentions that if the user has insurance and the reason is covered, cancellation is allowed."
+- It did not actually check what are the reasons insurance cover. In fact, earlier in step 5, it correctly says "refund is available if the cancellation reason is covered (e.g., health, weather, or other insured events)." This "other insured events" is hallucinated. (i.e., not consistent with policy)
 
 ## 06/12/26
 
