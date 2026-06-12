@@ -136,7 +136,7 @@ There are three major tables:
 - origin: str; "ORD"
 - destination
 - flight_type: ["round_trip"; "one_way"]
-- cabin: ["business", "economy", "business_economy"]
+- cabin: ["business", "economy", "basic_economy"]
 - flights: a list of flights in the reservation
     - List[**ReservationFlight**]: {flight_number, origin, destination, date, price}
 - payment_history: a list of payments
@@ -463,9 +463,18 @@ This really gives us a sufficient set of task diagnosis. Let's now get started o
 
 ### Task 42
 
+This is a rather complicated one. Let's return to this later.
+
 ### Task 43
 
+Core failure: did not adhere to the policy strictly.
+- In agent's reasoning in step 19, "The user's case doesn't meet any of the conditions except maybe the user is silver. Wait, the policy says that the agent must check if the cancellation is allowed. The user's flight is available, so it's not flown. The user is asking to cancel, so the agent can proceed."
+- This last part of "the user is asking to cancel, so the agent can proceed" makes no sense. It's a direct ignorance of the policy.
+
 ### Task 44
+
+This is a hard one (on the level of task 42). The core failure is in agent's reasoning throughout this entire conversation history: since no tool gives duration for the users' reservation directly, it never pushed hard to work those out.
+- In practice, getting the actual flight duration is a multi-step process: first get the user details, then get the reservations. Based on the reservations, call search_direct_flights with the date, origin, destination, and match the flight number. Then use search_direct_flight's returned arrival departure time to determine duration.
 
 ### Task 45
 
@@ -475,7 +484,7 @@ Core failure: entirely wrong reasoning block and missing available tools.
 
 ### Task 47
 
-Core failure: did not understand that insurance only covers full refund for health/weather reasons, described in policy.md ln 99. In step 7's reasoning block, agent thinkks:
+Core failure: did not understand that insurance only covers full refund for health/weather reasons, described in policy.md ln 99. In step 7's reasoning block, agent thinks:
 - "The user has travel insurance, which covers "change of plan" reasons. The policy mentions that if the user has insurance and the reason is covered, cancellation is allowed."
 - It did not actually check what are the reasons insurance cover. In fact, earlier in step 5, it correctly says "refund is available if the cancellation reason is covered (e.g., health, weather, or other insured events)." This "other insured events" is hallucinated. (i.e., not consistent with policy)
 
