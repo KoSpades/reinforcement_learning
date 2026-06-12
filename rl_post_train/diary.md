@@ -460,3 +460,11 @@ The core failure occured so early in the reasoning block in step 1, that we didn
 - Even though in part of the reasoning the agent realized that they should try to ask the user about the user_id, they eventually did not ask, and just called transfer_to_human(), which results in a failure.
 
 This really gives us a sufficient set of task diagnosis. Let's now get started on fixing them. Many things to try including RL, SFT, or a better agent impl. We should test out them all.
+
+## 06/12/26
+
+## Principles
+1. If we do some kind of agent design, it should be general (i.e., domain specific tools/policies) should be something that's plugged in.
+2. Verification is key. (e.g., in form of unit tests)
+3. Modularization. (each agent in charge of a small piece of task)
+4. Work on small models (this is where we realistically have a chance of making something useful).
