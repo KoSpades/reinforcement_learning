@@ -10,6 +10,7 @@ from tau2.agent.discrete_time_audio_native_agent import (
 from tau2.agent.llm_agent import (
     LLMGTAgent,
     LLMSoloAgent,
+    create_guarded_llm_agent,
     create_llm_agent,
     create_llm_gt_agent,
     create_llm_solo_agent,
@@ -295,6 +296,7 @@ try:
 
     # Agent factories
     registry.register_agent_factory(create_llm_agent, "llm_agent")
+    registry.register_agent_factory(create_guarded_llm_agent, "guarded_llm_agent")
     registry.register_agent_factory(
         create_llm_gt_agent,
         "llm_agent_gt",

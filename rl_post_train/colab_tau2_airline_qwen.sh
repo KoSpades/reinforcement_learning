@@ -19,12 +19,14 @@ set -euo pipefail
 #   export VLLM_MODEL="Qwen/Qwen3-8B"
 #   export OLLAMA_MODEL="qwen3:8b"
 #   export USER_MODEL="gpt-4.1-2025-04-14"
+#   export TAU2_AGENT="guarded_llm_agent"  # or "llm_agent" for baseline
 #   export AGENT_TIMEOUT="120"
 #   export AGENT_NUM_RETRIES="0"
 # Usage:
 #   bash colab_tau2_airline_qwen.sh
 #   bash colab_tau2_airline_qwen.sh --num-tasks 5 --runs 2
 #   bash colab_tau2_airline_qwen.sh --save-prefix experiment-a
+#   bash colab_tau2_airline_qwen.sh --agent llm_agent  # baseline comparison
 #
 # Defaults:
 #   --num-tasks all airline tasks
@@ -64,6 +66,7 @@ VLLM_INSTALL_ARGS="${VLLM_INSTALL_ARGS:---torch-backend=auto --reinstall}"
 
 OLLAMA_MODEL="${OLLAMA_MODEL:-qwen3:8b}"
 USER_MODEL="${USER_MODEL:-gpt-4.1-2025-04-14}"
+TAU2_AGENT="${TAU2_AGENT:-guarded_llm_agent}"
 NUM_TASKS="${NUM_TASKS:-}"
 RUNS="${RUNS:-1}"
 SAVE_PREFIX="${SAVE_PREFIX:-}"
@@ -100,7 +103,8 @@ Usage: bash colab_tau2_airline_qwen.sh [options]
 Options:
   --num-tasks N        Number of airline tasks to run per run. Omit for all tasks.
   --runs N            Number of complete runs to execute. Default: 1.
-  --save-prefix NAME  Prefix for output directories. Default: colab-qwen-agent-airline-<timestamp>.
+  --agent NAME        tau2 agent implementation. Default: guarded_llm_agent.
+  --save-prefix NAME  Prefix for output directories. Default: colab-qwen-${TAU2_AGENT}-airline-<timestamp>.
   --help              Show this help.
 
 Environment:
@@ -115,6 +119,7 @@ Environment:
   OLLAMA_MODEL        Default: qwen3:8b.
   AGENT_MODEL         Default: openai/${VLLM_SERVED_MODEL} for vllm, ollama_chat/${OLLAMA_MODEL} for ollama.
   USER_MODEL          Default: gpt-4.1-2025-04-14.
+  TAU2_AGENT          Default: guarded_llm_agent. Use llm_agent for baseline.
   MAX_CONCURRENCY     Default: 8.
   AGENT_TIMEOUT       Timeout in seconds for local agent calls. Default: 120.
   AGENT_NUM_RETRIES   LiteLLM retry count for local agent calls. Default: 0.
@@ -148,6 +153,10 @@ while [[ $# -gt 0 ]]; do
       RUNS="${2:?Missing value for --runs}"
       shift 2
       ;;
+    --agent)
+      TAU2_AGENT="${2:?Missing value for --agent}"
+      shift 2
+      ;;
     --save-prefix)
       SAVE_PREFIX="${2:?Missing value for --save-prefix}"
       shift 2
@@ -175,7 +184,7 @@ if [[ -n "${NUM_TASKS}" ]] && ! [[ "${NUM_TASKS}" =~ ^[0-9]+$ ]]; then
 fi
 
 if [[ -z "${SAVE_PREFIX}" ]]; then
-  SAVE_PREFIX="colab-qwen-agent-airline-${RUN_TIMESTAMP}"
+  SAVE_PREFIX="colab-qwen-${TAU2_AGENT}-airline-${RUN_TIMESTAMP}"
 fi
 
 if [[ -z "${OPENAI_API_KEY:-}" ]]; then
@@ -293,6 +302,21 @@ PY
 echo "==> Verifying tau2 data"
 uv run tau2 check-data
 
+echo "==> Verifying tau2 agent registration: ${TAU2_AGENT}"
+uv run python - <<PY
+from tau2.registry import registry
+
+agent_name = "${TAU2_AGENT}"
+if registry.get_agent_factory(agent_name) is None:
+    available = sorted(registry.info().agents)
+    raise SystemExit(
+        f"Agent {agent_name!r} is not registered in this checkout. "
+        f"Available agents: {available}. Make sure the cloud repo has the "
+        "guarded_llm_agent code before running."
+    )
+print(agent_name)
+PY
+
 echo "==> Verifying LiteLLM -> ${AGENT_BACKEND} chat path"
 uv run python - <<PY
 from litellm import completion
@@ -350,6 +374,7 @@ print(message.tool_calls[0].function.name)
 PY
 
 echo "==> Running tau2 airline"
+echo "==> Agent implementation: ${TAU2_AGENT}"
 LIVE_RESULTS_DIR="${TAU2_DIR}/data/live_conversations"
 mkdir -p "${LIVE_RESULTS_DIR}"
 if [[ "${CLEAR_LIVE_CONVERSATIONS}" == "1" ]]; then
@@ -365,6 +390,7 @@ for run_idx in $(seq 1 "${RUNS}"); do
   RUN_ARGS=(
     uv run tau2 run
     --domain airline
+    --agent "${TAU2_AGENT}"
     --agent-llm "${AGENT_MODEL}"
     --agent-llm-args "$(agent_llm_args_json)"
     --user-llm "${USER_MODEL}"

@@ -495,3 +495,5 @@ Core failure: did not understand that insurance only covers full refund for heal
 2. Verification is key. (e.g., in form of unit tests)
 3. Modularization. (each agent in charge of a small piece of task)
 4. Work on small models (this is where we realistically have a chance of making something useful).
+
+## 06/30/12
