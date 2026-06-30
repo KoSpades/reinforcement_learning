@@ -1,8 +1,0 @@
-{
-  "domain": "airline",
-  "task_id": "23",
-  "simulation_id": "e0aba364-d53f-41e2-8976-2850fd325384",
-  "seed": 626729,
-  "batch_id": "colab-qwen-guarded_llm_agent-airline-20260630_183614-run-1",
-  "started_at": "2026-06-30T18:44:35.912298"
-}

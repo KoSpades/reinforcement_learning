@@ -67640,7 +67640,5 @@
       "effect_timeline": null
     }
   ],
-  "simulation_index": null,
-  "_tau2_live_batch_id": "colab-qwen-guarded_llm_agent-airline-20260630_191103-run-1",
-  "_tau2_save_to": "colab-qwen-guarded_llm_agent-airline-20260630_191103-run-1"
+  "simulation_index": null
 }
