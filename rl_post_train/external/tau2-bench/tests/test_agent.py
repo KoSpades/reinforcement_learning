@@ -87,11 +87,25 @@ def get_users() -> list[str]:
     return ["user-1"]
 
 
+def search_direct_flight(origin: str, destination: str, date: str) -> list[str]:
+    """Search direct flights.
+
+    Args:
+        origin: Origin airport.
+        destination: Destination airport.
+        date: Flight date.
+    """
+    return [f"{origin}-{destination}-{date}"]
+
+
 def test_guarded_agent_infers_non_airline_write_tools():
-    write_tools = _infer_write_tools([as_tool(create_task), as_tool(get_users)])
+    write_tools = _infer_write_tools(
+        [as_tool(create_task), as_tool(get_users), as_tool(search_direct_flight)]
+    )
 
     assert "create_task" in write_tools
     assert "get_users" not in write_tools
+    assert "search_direct_flight" not in write_tools
 
 
 def test_guarded_agent_fails_closed_when_policy_guard_errors(monkeypatch):

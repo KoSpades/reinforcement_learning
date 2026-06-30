@@ -332,6 +332,54 @@ class BaseOrchestrator(ABC, Generic[BaseAgentT, BaseUserT, TrajectoryItemT]):
         except Exception as e:
             logger.warning(f"Failed to write live conversation event: {e}")
 
+    def _format_live_guardrail_event(self, event: dict) -> str:
+        title = (
+            f"### GUARDRAIL: {event.get('guard', 'unknown')} "
+            f"{event.get('decision', 'decision').upper()}"
+        )
+        summary = {
+            key: value
+            for key, value in event.items()
+            if value not in (None, [], {})
+        }
+        return (
+            f"\n{title}\n\n"
+            "```json\n"
+            f"{json.dumps(summary, indent=2, default=str)}\n"
+            "```\n"
+        )
+
+    def _append_live_guardrail_event(self, event: dict) -> None:
+        try:
+            log_dir = self._ensure_live_log_initialized()
+            record = {
+                "step": self.step_count,
+                "timestamp": get_now(),
+                "event": "guardrail_decision",
+                "from_role": getattr(self, "from_role", None),
+                "to_role": getattr(self, "to_role", None),
+                "details": event,
+            }
+            with (log_dir / "events.jsonl").open("a") as f:
+                f.write(json.dumps(record, default=str) + "\n")
+            formatted_event = self._format_live_guardrail_event(event)
+            with (log_dir / "conversation.md").open("a") as f:
+                f.write(formatted_event)
+            print(formatted_event, flush=True)
+        except Exception as e:
+            logger.warning(f"Failed to write live guardrail event: {e}")
+
+    def _append_agent_guardrail_events(self) -> None:
+        events = list(getattr(self.agent_state, "guardrail_events", []) or [])
+        if not events:
+            return
+        for event in events:
+            self._append_live_guardrail_event(event)
+        try:
+            self.agent_state.guardrail_events = []
+        except Exception as e:
+            logger.warning(f"Failed to clear guardrail events from agent state: {e}")
+
     def _append_live_error(self, error: BaseException) -> None:
         try:
             details = {
@@ -760,6 +808,7 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
                 first_message, self.agent_state = self.agent.generate_next_message(
                     None, self.agent_state
                 )
+                self._append_agent_guardrail_events()
                 self.trajectory = [first_message]
                 self._append_live_message(first_message)
                 self.message = first_message
@@ -987,6 +1036,7 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
                 self.message, self.agent_state
             )
             self._append_live_event("received_agent_message")
+            self._append_agent_guardrail_events()
             agent_msg.validate()
             if self.agent.is_stop(agent_msg):
                 self.done = True

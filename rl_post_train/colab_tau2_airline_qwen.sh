@@ -20,7 +20,7 @@ set -euo pipefail
 #   export OLLAMA_MODEL="qwen3:8b"
 #   export USER_MODEL="gpt-4.1-2025-04-14"
 #   export TAU2_AGENT="guarded_llm_agent"  # or "llm_agent" for baseline
-#   export AGENT_TIMEOUT="120"
+#   export AGENT_TIMEOUT="150"
 #   export AGENT_NUM_RETRIES="0"
 # Usage:
 #   bash colab_tau2_airline_qwen.sh
@@ -70,8 +70,8 @@ TAU2_AGENT="${TAU2_AGENT:-guarded_llm_agent}"
 NUM_TASKS="${NUM_TASKS:-}"
 RUNS="${RUNS:-1}"
 SAVE_PREFIX="${SAVE_PREFIX:-}"
-MAX_CONCURRENCY="${MAX_CONCURRENCY:-8}"
-AGENT_TIMEOUT="${AGENT_TIMEOUT:-120}"
+MAX_CONCURRENCY="${MAX_CONCURRENCY:-6}"
+AGENT_TIMEOUT="${AGENT_TIMEOUT:-150}"
 AGENT_NUM_RETRIES="${AGENT_NUM_RETRIES:-0}"
 PUSH_RESULTS="${PUSH_RESULTS:-0}"
 CLEAR_LIVE_CONVERSATIONS="${CLEAR_LIVE_CONVERSATIONS:-1}"
@@ -120,8 +120,8 @@ Environment:
   AGENT_MODEL         Default: openai/${VLLM_SERVED_MODEL} for vllm, ollama_chat/${OLLAMA_MODEL} for ollama.
   USER_MODEL          Default: gpt-4.1-2025-04-14.
   TAU2_AGENT          Default: guarded_llm_agent. Use llm_agent for baseline.
-  MAX_CONCURRENCY     Default: 8.
-  AGENT_TIMEOUT       Timeout in seconds for local agent calls. Default: 120.
+  MAX_CONCURRENCY     Default: 6.
+  AGENT_TIMEOUT       Timeout in seconds for local agent calls. Default: 150.
   AGENT_NUM_RETRIES   LiteLLM retry count for local agent calls. Default: 0.
   PUSH_RESULTS        Commit and push generated results. Default: 0.
   CLEAR_LIVE_CONVERSATIONS Clear old live conversation files before running. Default: 1.
@@ -375,6 +375,23 @@ PY
 
 echo "==> Running tau2 airline"
 echo "==> Agent implementation: ${TAU2_AGENT}"
+if [[ "${TAU2_AGENT}" == "guarded_llm_agent" ]]; then
+  cat <<'EOF'
+================================================================
+TESTING NEW GUARDED AGENT
+Agent: guarded_llm_agent
+Guardrails enabled: policy verifier + explicit user confirmation
+================================================================
+EOF
+else
+  cat <<EOF
+================================================================
+TESTING NON-GUARDED / BASELINE AGENT
+Agent: ${TAU2_AGENT}
+Guardrails enabled: no, unless this custom agent implements its own
+================================================================
+EOF
+fi
 LIVE_RESULTS_DIR="${TAU2_DIR}/data/live_conversations"
 mkdir -p "${LIVE_RESULTS_DIR}"
 if [[ "${CLEAR_LIVE_CONVERSATIONS}" == "1" ]]; then

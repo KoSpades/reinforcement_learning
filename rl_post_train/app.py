@@ -712,6 +712,26 @@ def payload_for(index: int) -> dict[str, Any]:
     path = entry.get("path")
     messages = read_jsonl(path / "conversation.jsonl") if path else []
     events = read_jsonl(path / "events.jsonl") if path else []
+    guardrail_messages = [
+        {
+            "step": event.get("step"),
+            "timestamp": event.get("timestamp"),
+            "message": {
+                "role": "tool",
+                "content": {
+                    "guardrail": True,
+                    **(event.get("details") or {}),
+                },
+            },
+        }
+        for event in events
+        if event.get("event") == "guardrail_decision"
+    ]
+    if guardrail_messages:
+        messages = sorted(
+            [*messages, *guardrail_messages],
+            key=lambda row: (row.get("timestamp") or "", str(row.get("step") or "")),
+        )
     if not messages:
         summary = summarize_entry(entry, index)
         infra_events = [

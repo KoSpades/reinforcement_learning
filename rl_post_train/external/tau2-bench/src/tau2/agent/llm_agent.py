@@ -5,7 +5,7 @@ from enum import Enum
 from typing import Generic, List, Optional, TypeVar
 
 from loguru import logger
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from tau2.agent.base.llm_config import LLMConfigMixin
 from tau2.agent.base_agent import (
@@ -587,6 +587,7 @@ class GuardedLLMAgentState(LLMAgentState):
 
     pending_action: Optional[list] = None
     pending_tool_calls: Optional[list[ToolCall]] = None
+    guardrail_events: list[dict] = Field(default_factory=list)
 
 
 # Tools that mutate the backend and therefore require explicit user confirmation
@@ -609,6 +610,7 @@ READ_ONLY_TOOL_PREFIXES = (
     "get_",
     "list_",
     "find_",
+    "search_",
     "calculate",
     "assert_",
     "query_",
@@ -714,6 +716,48 @@ def _describe_tool_call(tool_call: ToolCall) -> str:
     return f"{tool_call.name}({args})"
 
 
+def _tool_call_summary(tool_calls: Optional[list[ToolCall]]) -> list[dict]:
+    if not tool_calls:
+        return []
+    return [
+        {
+            "id": tc.id,
+            "name": tc.name,
+            "arguments": tc.arguments,
+        }
+        for tc in tool_calls
+    ]
+
+
+def _record_guardrail_event(
+    ctx: GuardContext,
+    *,
+    guard: str,
+    decision: str,
+    action: str,
+    reason: Optional[str] = None,
+    candidate: Optional[AssistantMessage] = None,
+    replacement: Optional[AssistantMessage] = None,
+    extra: Optional[dict] = None,
+) -> None:
+    event = {
+        "guard": guard,
+        "decision": decision,
+        "action": action,
+        "reason": reason,
+        "candidate_tool_calls": _tool_call_summary(
+            candidate.tool_calls if candidate else None
+        ),
+        "replacement_tool_calls": _tool_call_summary(
+            replacement.tool_calls if replacement else None
+        ),
+        "replacement_content": replacement.content if replacement else None,
+    }
+    if extra:
+        event.update(extra)
+    ctx.state.guardrail_events.append(event)
+
+
 def _render_transcript(messages: list) -> str:
     """Render the conversation transcript for a guard's verification call."""
     return "\n\n".join(str(m) for m in messages)
@@ -786,6 +830,13 @@ Verify the proposed action now. Remember: quote a permitting clause or return a 
 
     def review(self, candidate: AssistantMessage, ctx: GuardContext) -> Verdict:
         if not candidate.is_tool_call():
+            _record_guardrail_event(
+                ctx,
+                guard="policy_guard",
+                decision="approve",
+                action="skip_non_tool_message",
+                candidate=candidate,
+            )
             return Verdict.approve()
         consequential = [
             tc
@@ -794,6 +845,13 @@ Verify the proposed action now. Remember: quote a permitting clause or return a 
         ]
         if not consequential:
             # Read-only tool calls are safe and idempotent: no verification.
+            _record_guardrail_event(
+                ctx,
+                guard="policy_guard",
+                decision="approve",
+                action="skip_read_only_tool_call",
+                candidate=candidate,
+            )
             return Verdict.approve()
 
         action_text = "\n".join(_describe_tool_call(tc) for tc in consequential)
@@ -816,30 +874,73 @@ Verify the proposed action now. Remember: quote a permitting clause or return a 
             )
         except Exception as e:  # noqa: BLE001 - infra failure should not break the turn
             logger.warning(f"PolicyGuard verification call failed, failing closed: {e}")
-            return Verdict.revise(
+            reason = (
                 "The policy verifier failed before it could confirm this action is "
                 "permitted. Ask the user for clarification or try a read-only step "
                 "instead of taking a consequential action."
+            )
+            _record_guardrail_event(
+                ctx,
+                guard="policy_guard",
+                decision="revise",
+                action="verifier_error_fail_closed",
+                reason=reason,
+                candidate=candidate,
+                extra={"error": str(e)},
+            )
+            return Verdict.revise(
+                reason
             )
 
         verdict_obj = _extract_json_object(response.content)
         if verdict_obj is None:
             # The verifier ran but produced no parseable verdict. Fail closed on
             # the safety decision: ask the proposer to justify with a citation.
-            return Verdict.revise(
+            reason = (
                 "The policy verifier could not confirm this action is permitted. "
                 "Re-justify it by quoting the exact policy clause that authorizes "
                 "it, or take a different action."
             )
+            _record_guardrail_event(
+                ctx,
+                guard="policy_guard",
+                decision="revise",
+                action="unparseable_verifier_response",
+                reason=reason,
+                candidate=candidate,
+                extra={"verifier_response": response.content},
+            )
+            return Verdict.revise(reason)
 
         verdict = str(verdict_obj.get("verdict", "")).strip().lower()
         citation = str(verdict_obj.get("citation", "")).strip()
         reason = str(verdict_obj.get("reason", "")).strip()
         if verdict == "permit" and citation:
+            _record_guardrail_event(
+                ctx,
+                guard="policy_guard",
+                decision="approve",
+                action="policy_permitted",
+                reason=reason,
+                candidate=candidate,
+                extra={"citation": citation},
+            )
             return Verdict.approve()
-        return Verdict.revise(
+        revise_reason = (
             reason
             or "This action is not permitted by the policy given the verified facts."
+        )
+        _record_guardrail_event(
+            ctx,
+            guard="policy_guard",
+            decision="revise",
+            action="policy_violation",
+            reason=revise_reason,
+            candidate=candidate,
+            extra={"verifier_verdict": verdict, "citation": citation},
+        )
+        return Verdict.revise(
+            revise_reason
         )
 
 
@@ -914,6 +1015,13 @@ class ConfirmationGuard(Guard):
         pending_tool_calls = ctx.state.pending_tool_calls
         if pending and self.is_negation(ctx.latest_user_message):
             self._clear_pending(ctx)
+            _record_guardrail_event(
+                ctx,
+                guard="confirmation_guard",
+                decision="approve",
+                action="clear_pending_on_user_negation",
+                candidate=candidate,
+            )
             pending = None
             pending_tool_calls = None
 
@@ -924,24 +1032,65 @@ class ConfirmationGuard(Guard):
                 ]
                 if self._signature(candidate_write_calls) == pending:
                     self._clear_pending(ctx)
+                    _record_guardrail_event(
+                        ctx,
+                        guard="confirmation_guard",
+                        decision="approve",
+                        action="confirmed_matching_write",
+                        candidate=candidate,
+                    )
                     return Verdict.approve()
             self._clear_pending(ctx)
-            return Verdict.replace(self._confirmed_action_message(pending_tool_calls))
+            replacement = self._confirmed_action_message(pending_tool_calls)
+            _record_guardrail_event(
+                ctx,
+                guard="confirmation_guard",
+                decision="replace",
+                action="confirmed_pending_write",
+                candidate=candidate,
+                replacement=replacement,
+                reason="User affirmed the previously confirmed action; executing the stored vetted tool call.",
+            )
+            return Verdict.replace(replacement)
 
         if not candidate.is_tool_call():
+            _record_guardrail_event(
+                ctx,
+                guard="confirmation_guard",
+                decision="approve",
+                action="skip_non_tool_message",
+                candidate=candidate,
+            )
             return Verdict.approve()
         write_calls = [
             tc for tc in candidate.tool_calls if tc.name in self.write_tools
         ]
         if not write_calls:
             # All reads (or a transfer, which the policy guard already vetted).
+            _record_guardrail_event(
+                ctx,
+                guard="confirmation_guard",
+                decision="approve",
+                action="skip_no_write_tool_call",
+                candidate=candidate,
+            )
             return Verdict.approve()
 
         signature = self._signature(write_calls)
         # Unconfirmed write (new, changed, or not yet affirmed): surface it.
         ctx.state.pending_action = signature
         ctx.state.pending_tool_calls = write_calls
-        return Verdict.replace(self._confirmation_message(write_calls))
+        replacement = self._confirmation_message(write_calls)
+        _record_guardrail_event(
+            ctx,
+            guard="confirmation_guard",
+            decision="replace",
+            action="request_user_confirmation",
+            candidate=candidate,
+            replacement=replacement,
+            reason="Write tool call requires explicit user confirmation before execution.",
+        )
+        return Verdict.replace(replacement)
 
 
 class GuardedLLMAgent(LLMAgent[LLMAgentStateType], Generic[LLMAgentStateType]):
@@ -1100,16 +1249,51 @@ class GuardedLLMAgent(LLMAgent[LLMAgentStateType], Generic[LLMAgentStateType]):
         for attempt in range(1, self.max_proposer_attempts + 1):
             verdict = self._run_guards(candidate, ctx)
             if verdict.decision == GuardDecision.APPROVE:
+                _record_guardrail_event(
+                    ctx,
+                    guard="guarded_llm_agent",
+                    decision="approve",
+                    action="emit_candidate",
+                    candidate=candidate,
+                    extra={"attempt": attempt},
+                )
                 return candidate
             if verdict.decision == GuardDecision.REPLACE:
+                _record_guardrail_event(
+                    ctx,
+                    guard="guarded_llm_agent",
+                    decision="replace",
+                    action="emit_replacement",
+                    reason=verdict.reason,
+                    candidate=candidate,
+                    replacement=verdict.replacement,
+                    extra={"attempt": attempt},
+                )
                 return verdict.replacement
             # REVISE: bounce back to the proposer unless we are out of attempts.
             last_reason = verdict.reason
             if attempt >= self.max_proposer_attempts:
                 break
+            _record_guardrail_event(
+                ctx,
+                guard="guarded_llm_agent",
+                decision="revise",
+                action="retry_proposer",
+                reason=verdict.reason,
+                candidate=candidate,
+                extra={"attempt": attempt},
+            )
             scratch.extend(self._revision_feedback(candidate, verdict.reason))
             candidate = self._propose(base_messages, scratch)
 
+        _record_guardrail_event(
+            ctx,
+            guard="guarded_llm_agent",
+            decision="replace",
+            action="emit_fail_safe_message",
+            reason=last_reason,
+            candidate=candidate,
+        )
         return self._fail_safe_message(last_reason)
 
 
